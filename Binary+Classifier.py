@@ -8,7 +8,7 @@ import matplotlib as mpl
 import os
 import matplotlib.pyplot as plt
 import matplotlib.animation
-import png
+#import png
 import tensorflow as tf
 from numpy import genfromtxt
 import pandas as pd
@@ -16,8 +16,8 @@ import pandas as pd
 
 # In[2]:
 
-TEST_SIZE = 5
-
+BATCH_SIZE = 5
+FILTER_COUNT=16
 
 # In[3]:
 
@@ -155,7 +155,7 @@ def read_data(infile):
 def bulk_read_data(image_paths):
     data = []
     for path in image_paths:
-        path = "./images/" + path + ".aps"
+        path = "/efs/images/" + path + ".aps"
         data.append(read_data(path))
     return np.stack(data)
 
@@ -163,26 +163,26 @@ def bulk_read_data(image_paths):
 # In[23]:
 
 def build_model(data, labels, mode):
-    data = tf.reshape(data, [-1, 512, 660, 16])
+    data = tf.reshape(data, [-1, 512, 660, FILTER_COUNT])
     print(data.shape)
     conv = tf.layers.conv2d(
         inputs=data,
-        filters=32,
+        filters=16,
         kernel_size=[50, 50],
         padding="same",
         activation=tf.nn.relu)
-    conv = tf.reshape(conv, [10, 512, 660, 32])
+    conv = tf.reshape(conv, [BATCH_SIZE, 512, 660, FILTER_COUNT])
     print ("CONV " + str(conv))
     pool1 = tf.layers.max_pooling2d(inputs=conv, pool_size=[2, 2], strides=2)
     print("POOL " + str(pool1))
-    flat_pool = tf.reshape(pool1, [-1, 2703360])
+    flat_pool = tf.reshape(pool1, [BATCH_SIZE, (330 * 256 * FILTER_COUNT)])
     print ("FLAT POOL " + str(flat_pool))
     logits = tf.layers.dense(inputs=flat_pool, units=2)
     logits =tf.identity(logits, name="logits")
-    logits = tf.reshape(logits, [10,2])
+    logits = tf.reshape(logits, [BATCH_SIZE,2])
     print("LOGITS " + str(logits))
     #labels = tf.one_hot(labels, depth=2)
-    flat_labels = tf.reshape(labels, [10, 2])
+    flat_labels = tf.reshape(labels, [BATCH_SIZE, 2])
     test_labels=tf.identity(flat_labels, name="labels")
     print("LABELS " + str(test_labels))
     loss = tf.losses.softmax_cross_entropy(onehot_labels=test_labels, logits=logits)
@@ -203,7 +203,7 @@ def build_model(data, labels, mode):
 
 # In[24]:
 
-image_df = pd.read_csv('stage1_labels.csv')
+image_df = pd.read_csv('/efs/stage1_labels.csv')
 image_df['zone'] = image_df['Id'].str.split("_", expand=True)[1].str.strip()
 image_df['id'] = image_df['Id'].str.split("_", expand=True)[0].str.strip()
 
@@ -234,7 +234,7 @@ def input_labels(zone, ids):
 # In[27]:
 
 tf.reset_default_graph()
-sess = tf.InteractiveSession()
+sess = tf.InteractiveSession(config=tf.ConfigProto(log_device_placement=True))
 
 
 # In[28]:
@@ -244,7 +244,7 @@ sess.run(tf.initialize_all_variables())
 
 # In[30]:
 
-tsa_classifier = tf.contrib.learn.Estimator(model_fn=build_model, model_dir="/tmp/tsa_model7")
+tsa_classifier = tf.contrib.learn.Estimator(model_fn=build_model, model_dir="/tmp/tsa_model9")
 
 
 # In[31]:
@@ -256,7 +256,7 @@ logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=5
 # In[ ]:
 
 ids = image_df["id"].unique()[:100]
-tsa_classifier.fit(x=input_images(ids), y=input_labels("Zone1",ids), steps=10000, batch_size=10, monitors=[logging_hook])
+tsa_classifier.fit(x=input_images(ids), y=input_labels("Zone1",ids), steps=10000, batch_size=BATCH_SIZE, monitors=[logging_hook])
 
 
 # In[16]:
