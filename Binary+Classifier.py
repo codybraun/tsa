@@ -18,6 +18,10 @@ import pandas as pd
 
 BATCH_SIZE = 5
 FILTER_COUNT=16
+KERNEL_SIZE=[5,5]
+STEPS=10000
+
+tf.logging.set_verbosity(tf.logging.INFO)
 
 # In[3]:
 
@@ -168,7 +172,7 @@ def build_model(data, labels, mode):
     conv = tf.layers.conv2d(
         inputs=data,
         filters=16,
-        kernel_size=[50, 50],
+        kernel_size=KERNEL_SIZE,
         padding="same",
         activation=tf.nn.relu)
     conv = tf.reshape(conv, [BATCH_SIZE, 512, 660, FILTER_COUNT])
@@ -256,7 +260,7 @@ logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=5
 # In[ ]:
 
 ids = image_df["id"].unique()[:100]
-tsa_classifier.fit(x=input_images(ids), y=input_labels("Zone1",ids), steps=10000, batch_size=BATCH_SIZE, monitors=[logging_hook])
+tsa_classifier.fit(x=input_images(ids), y=input_labels("Zone1",ids), steps=STEPS, batch_size=BATCH_SIZE, monitors=[logging_hook])
 
 
 # In[16]:
@@ -266,37 +270,18 @@ filters = tsa_classifier.get_variable_value("conv2d/kernel")
 
 # In[17]:
 
-filters.shape
+print(filters.shape)
 
 
 # In[22]:
 
 x = filters[:,:,0,0]
-plt.imshow(x)
-plt.show()
+#plt.imshow(x)
+#plt.show()
 
 
 # In[21]:
 
 dir(tf.python_io)
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
 
 
