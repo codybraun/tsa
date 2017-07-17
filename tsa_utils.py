@@ -1,29 +1,5 @@
-
-# coding: utf-8
-
-# In[1]:
-
+import os 
 import numpy as np
-import matplotlib as mpl
-import os
-import matplotlib.pyplot as plt
-import matplotlib.animation
-#import png
-import tensorflow as tf
-from numpy import genfromtxt
-import pandas as pd
-
-
-# In[2]:
-
-BATCH_SIZE = 5
-FILTER_COUNT=16
-KERNEL_SIZE=[5,5]
-STEPS=10000
-
-tf.logging.set_verbosity(tf.logging.INFO)
-
-# In[3]:
 
 def read_header(infile):
     """Read image header (first 512 bytes)
@@ -163,66 +139,13 @@ def bulk_read_data(image_paths):
         data.append(read_data(path))
     return np.stack(data)
 
-
-# In[23]:
-
-def build_model(data, labels, mode):
-    data = tf.reshape(data, [-1, 512, 660, FILTER_COUNT])
-    print(data.shape)
-    conv = tf.layers.conv2d(
-        inputs=data,
-        filters=16,
-        kernel_size=KERNEL_SIZE,
-        padding="same",
-        activation=tf.nn.relu)
-    conv = tf.reshape(conv, [BATCH_SIZE, 512, 660, FILTER_COUNT])
-    print ("CONV " + str(conv))
-    pool1 = tf.layers.max_pooling2d(inputs=conv, pool_size=[2, 2], strides=2)
-    print("POOL " + str(pool1))
-    flat_pool = tf.reshape(pool1, [BATCH_SIZE, (330 * 256 * FILTER_COUNT)])
-    print ("FLAT POOL " + str(flat_pool))
-    logits = tf.layers.dense(inputs=flat_pool, units=2)
-    logits =tf.identity(logits, name="logits")
-    logits = tf.reshape(logits, [BATCH_SIZE,2])
-    print("LOGITS " + str(logits))
-    #labels = tf.one_hot(labels, depth=2)
-    flat_labels = tf.reshape(labels, [BATCH_SIZE, 2])
-    test_labels=tf.identity(flat_labels, name="labels")
-    print("LABELS " + str(test_labels))
-    loss = tf.losses.softmax_cross_entropy(onehot_labels=test_labels, logits=logits)
-    #loss = tf.losses.mean_squared_error(test_labels, logits)
-    predictions = {
-        "classes": tf.argmax(
-          input=logits, axis=1, name="classes"),
-      "probabilities": tf.nn.softmax(
-          logits, name="softmax_tensor")}
-    print(predictions)
-    train_op = tf.contrib.layers.optimize_loss(
-        loss=loss,
-        global_step=tf.contrib.framework.get_global_step(),
-        learning_rate=0.001,
-        optimizer="SGD")
-    return tf.contrib.learn.ModelFnOps(mode=mode, predictions=predictions, loss=loss, train_op=train_op)
-
-
-# In[24]:
-
-image_df = pd.read_csv('/efs/stage1_labels.csv')
-image_df['zone'] = image_df['Id'].str.split("_", expand=True)[1].str.strip()
-image_df['id'] = image_df['Id'].str.split("_", expand=True)[0].str.strip()
-
-
-# In[25]:
-
 def input_images(ids):
     data = bulk_read_data(ids)
     print("data shape " + str(data.shape))
     return data
 
 
-# In[26]:
-
-def input_labels(zone, ids):
+def input_labels(image_df, zone, ids):
     test_labels = image_df[image_df['id'].isin(ids)]
     test_labels = test_labels[test_labels["zone"]==zone]
     test_labels["class0"] = 0
@@ -233,55 +156,3 @@ def input_labels(zone, ids):
     test_labels = np.reshape(np.array(test_labels[["class0","class1"]]), [-1,2])
     print("Label shape " + str(test_labels.shape))
     return test_labels
-
-
-# In[27]:
-
-tf.reset_default_graph()
-sess = tf.InteractiveSession(config=tf.ConfigProto(log_device_placement=True))
-
-
-# In[28]:
-
-sess.run(tf.initialize_all_variables())
-
-
-# In[30]:
-
-tsa_classifier = tf.contrib.learn.Estimator(model_fn=build_model, model_dir="/tmp/tsa_model9")
-
-
-# In[31]:
-
-tensors_to_log = {"probabilities": "softmax_tensor", "classes":"classes", "actual":"labels", "logits":"logits"}
-logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=5)
-
-
-# In[ ]:
-
-ids = image_df["id"].unique()[:100]
-tsa_classifier.fit(x=input_images(ids), y=input_labels("Zone1",ids), steps=STEPS, batch_size=BATCH_SIZE, monitors=[logging_hook])
-
-
-# In[16]:
-
-filters = tsa_classifier.get_variable_value("conv2d/kernel")
-
-
-# In[17]:
-
-print(filters.shape)
-
-
-# In[22]:
-
-x = filters[:,:,0,0]
-#plt.imshow(x)
-#plt.show()
-
-
-# In[21]:
-
-dir(tf.python_io)
-
-
