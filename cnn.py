@@ -11,42 +11,46 @@ sys.path.append(os.getcwd())
 import tsa_utils
 
 #Model parameters
-BATCH_SIZE = 5
-FILTER_COUNT=16
-KERNEL_SIZE=[25,25]
-XSTRIDE=16
-YSTRIDE=33
+BATCH_SIZE = 30
+FILTER_COUNT= 16
+KERNEL_SIZE1=[5,5]
+XSTRIDE=3
+YSTRIDE=3
 POOLSIZE=5
 STEPS=10000
 XSIZE=512
 YSIZE=660
+LEARNING_RATE=.1
+MODEL_ID="tsa18"
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
 def build_model(data, labels, mode):
     data = tf.reshape(data, [-1, 512, 660, FILTER_COUNT])
     print(data.shape)
-    conv = tf.layers.conv2d(
-        inputs=data,
-        filters=FILTER_COUNT,
-        kernel_size=KERNEL_SIZE,
-        padding="same",
-        strides=(XSTRIDE, YSTRIDE),
-        activation=tf.nn.relu)
+    conv1 = tf.layers.conv2d(inputs=data, filters=FILTER_COUNT, kernel_size=KERNEL_SIZE1, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu)
     #conv = tf.reshape(conv, [BATCH_SIZE, 512, 660, FILTER_COUNT])
     print((XSIZE/XSTRIDE), (YSIZE/YSTRIDE), FILTER_COUNT)
-    conv = tf.reshape(conv, [BATCH_SIZE, int(XSIZE/XSTRIDE), int(YSIZE/YSTRIDE), FILTER_COUNT])
-    print ("CONV " + str(conv))
-    pool1 = tf.layers.max_pooling2d(inputs=conv, pool_size=[POOLSIZE, POOLSIZE], strides=POOLSIZE)
+   # reshaped = tf.reshape(conv, [BATCH_SIZE, int(XSIZE/XSTRIDE), int(YSIZE/YSTRIDE), FILTER_COUNT])
+    print ("CONV " + str(conv1))
+    pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[POOLSIZE, POOLSIZE], strides=POOLSIZE)
     print("POOL " + str(pool1))
+    conv2 = tf.layers.conv2d(inputs=pool1, filters=FILTER_COUNT, kernel_size=2, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu)
+    conv3 = tf.layers.conv2d(inputs=conv2, filters=FILTER_COUNT, kernel_size=2, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu)
+    print ("CONV2 " + str(conv2))
+    print ("CONV3 " + str(conv3))
+    pool2 = tf.layers.max_pooling2d(inputs=conv3, pool_size=2, strides=2)
+    print("POOL2 " + str(pool2))
     #flat_pool = tf.reshape(pool1, [BATCH_SIZE, (330 * 256 * FILTER_COUNT)])
-    flat_pool = tf.reshape(pool1, [BATCH_SIZE, int(((XSIZE/XSTRIDE)//POOLSIZE) * ((YSIZE/YSTRIDE)//POOLSIZE) * FILTER_COUNT) ])
+    #flat_pool = tf.reshape(pool2, [BATCH_SIZE, int(((XSIZE/XSTRIDE)//POOLSIZE) * ((YSIZE/YSTRIDE)//POOLSIZE) * FILTER_COUNT) ])
+    flat_pool = tf.reshape(pool2, [BATCH_SIZE, 64])
     print ("FLAT POOL " + str(flat_pool))
     logits = tf.layers.dense(inputs=flat_pool, units=2)
     logits =tf.identity(logits, name="logits")
     logits = tf.reshape(logits, [BATCH_SIZE,2])
     print("LOGITS " + str(logits))
     #labels = tf.one_hot(labels, depth=2)
+    print ("LABELS " + str(labels))
     flat_labels = tf.reshape(labels, [BATCH_SIZE, 2])
     test_labels=tf.identity(flat_labels, name="labels")
     print("LABELS " + str(test_labels))
@@ -61,7 +65,7 @@ def build_model(data, labels, mode):
     train_op = tf.contrib.layers.optimize_loss(
         loss=loss,
         global_step=tf.contrib.framework.get_global_step(),
-        learning_rate=0.001,
+        learning_rate=LEARNING_RATE,
         optimizer="SGD")
     return tf.contrib.learn.ModelFnOps(mode=mode, predictions=predictions, loss=loss, train_op=train_op)
 
@@ -73,14 +77,14 @@ tf.reset_default_graph()
 sess = tf.InteractiveSession(config=tf.ConfigProto(log_device_placement=True))
 sess.run(tf.initialize_all_variables())
 
-tsa_classifier = tf.contrib.learn.Estimator(model_fn=build_model, model_dir="/tmp/tsa_model1")
+tsa_classifier = tf.contrib.learn.Estimator(model_fn=build_model, model_dir="/tmp/" + MODEL_ID)
 
 
 tensors_to_log = {"probabilities": "softmax_tensor", "classes":"classes", "actual":"labels", "logits":"logits"}
 logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=5)
 
-ids = image_df["id"].unique()[:100]
-tsa_classifier.fit(x=tsa_utils.input_images(ids), y=tsa_utils.input_labels(image_df, "Zone1",ids), steps=STEPS, batch_size=BATCH_SIZE, monitors=[logging_hook])
+ids = image_df["id"].unique()
+tsa_classifier.fit(x=tsa_utils.InputImagesIterator(ids), y=tsa_utils.InputLabelsIterator(image_df, "Zone1",ids), steps=STEPS, batch_size=BATCH_SIZE, monitors=[logging_hook])
 
 filters = tsa_classifier.get_variable_value("conv2d/kernel")
 

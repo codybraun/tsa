@@ -144,9 +144,48 @@ def input_images(ids):
     print("data shape " + str(data.shape))
     return data
 
+class InputImagesIterator:
+    def __init__(self, ids):
+        self.ids=ids
+        self.i = 0
 
-def input_labels(image_df, zone, ids):
-    test_labels = image_df[image_df['id'].isin(ids)]
+    def __iter__(self):
+        return self
+
+    def next(self):
+        if self.i < len(self.ids):
+            self.i = self.i + 1
+            return np.stack(read_data("/efs/images/" + self.ids[self.i] + ".aps"))
+        else:
+            raise StopIteration()
+
+class InputLabelsIterator:
+    def __init__(self, df, zone, ids):
+        self.ids=ids
+        self.df=df
+        self.zone = zone
+        self.i = 0
+        test_labels = df[df['id'].isin(ids)]
+        test_labels = test_labels[test_labels["zone"]==zone]
+        test_labels["class0"] = 0
+        test_labels["class1"] = 0
+        test_labels.loc[test_labels['Probability'] == 0, 'class0'] = 1
+        test_labels.loc[test_labels['Probability'] == 1, 'class1'] = 1
+        test_labels = np.reshape(np.array(test_labels[["class0","class1"]]), [-1,2])
+        self.test_labels = test_labels
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        if self.i < len(self.ids):
+            self.i = self.i + 1
+            return(self.test_labels[self.i -1])
+        else:
+            raise StopIteration()
+
+def input_labels(df, zone, ids):
+    test_labels = df[df['id'].isin(ids)]
     test_labels = test_labels[test_labels["zone"]==zone]
     test_labels["class0"] = 0
     test_labels["class1"] = 0
