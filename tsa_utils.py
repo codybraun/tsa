@@ -130,7 +130,7 @@ def read_data(infile):
 def bulk_read_data(image_paths):
     data = []
     for path in image_paths:
-        path = "/efs/images/" + path + ".aps"
+        path = "./images/" + path + ".aps"
         data.append(read_data(path))
     return np.stack(data)
 
@@ -139,8 +139,9 @@ def input_images(ids):
     return data
 
 class InputImagesIterator:
-    def __init__(self, ids):
+    def __init__(self, ids, data_path):
         self.ids=ids
+        self.data_path=data_path
         self.i = 0
 
     def __iter__(self):
@@ -149,12 +150,12 @@ class InputImagesIterator:
     def next(self):
         if self.i < len(self.ids):
             self.i = self.i + 1
-            return np.stack(read_data("/efs/images/" + self.ids[self.i - 1] + ".aps"))
+            return np.stack(read_data(self.data_path + "/images/" + self.ids[self.i - 1] + ".aps"))
         else:
             #Restart iteration, cycle back through
             self.i = 0
             #raise StopIteration()
-            return np.stack(read_data("/efs/images/" + self.ids[0] + ".aps"))
+            return np.stack(read_data(self.data_path + "/images/" + self.ids[0] + ".aps"))
 
 class InputLabelsIterator:
     def __init__(self, df, zone, ids):

@@ -21,8 +21,9 @@ STEPS=10000
 XSIZE=512
 YSIZE=660
 LEARNING_RATE=.1
-MODEL_ID="tsa4"
+MODEL_ID="tsa5"
 WEIGHTS=[1, 10]
+DATA_PATH=os.environ["DATA_PATH"]
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -38,9 +39,9 @@ def build_model(data, labels, mode):
     print("POOL1" + str(pool1))
     conv4 = tf.layers.conv2d(inputs=pool1, filters=FILTER_COUNT, kernel_size=2, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu)
     print ("CONV4 " + str(conv4))
-    pool2 = tf.layers.max_pooling2d(inputs=conv3, pool_size=2, strides=2)
+    pool2 = tf.layers.max_pooling2d(inputs=conv4, pool_size=2, strides=2)
     print("POOL2 " + str(pool2))
-    flat_pool = tf.reshape(pool2, [BATCH_SIZE, 1351680])
+    flat_pool = tf.reshape(pool2, [BATCH_SIZE, 53856])
     print ("FLAT POOL " + str(flat_pool))
     logits = tf.layers.dense(inputs=flat_pool, units=2)
     logits =tf.identity(logits, name="logits")
@@ -68,7 +69,7 @@ def build_model(data, labels, mode):
         optimizer="SGD")
     return tf.contrib.learn.ModelFnOps(mode=mode, predictions=predictions, loss=loss, train_op=train_op)
 
-image_df = pd.read_csv('/efs/stage1_labels.csv')
+image_df = pd.read_csv('./stage1_labels.csv')
 image_df['zone'] = image_df['Id'].str.split("_", expand=True)[1].str.strip()
 image_df['id'] = image_df['Id'].str.split("_", expand=True)[0].str.strip()
 
@@ -88,7 +89,7 @@ print ("IDS " + str(ids))
 def test_input():
     print("HERE")
 
-tsa_classifier.fit(x=tsa_utils.InputImagesIterator(ids), y=tsa_utils.InputLabelsIterator(image_df, "Zone1",ids), steps=STEPS, batch_size=BATCH_SIZE, monitors=[logging_hook])
+tsa_classifier.fit(x=tsa_utils.InputImagesIterator(ids, DATA_PATH), y=tsa_utils.InputLabelsIterator(image_df, "Zone1",ids), steps=STEPS, batch_size=BATCH_SIZE, monitors=[logging_hook])
 
 filters = tsa_classifier.get_variable_value("conv2d/kernel")
 
