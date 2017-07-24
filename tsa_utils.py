@@ -92,8 +92,6 @@ def read_header(infile):
     return h
 
 
-# In[4]:
-
 def read_data(infile):
     """Read any of the 4 types of image files, returns a numpy array of the image contents
     """
@@ -129,9 +127,6 @@ def read_data(infile):
     else:
         return real, imag
 
-
-# In[5]:
-
 def bulk_read_data(image_paths):
     data = []
     for path in image_paths:
@@ -141,7 +136,6 @@ def bulk_read_data(image_paths):
 
 def input_images(ids):
     data = bulk_read_data(ids)
-    print("data shape " + str(data.shape))
     return data
 
 class InputImagesIterator:
@@ -155,9 +149,12 @@ class InputImagesIterator:
     def next(self):
         if self.i < len(self.ids):
             self.i = self.i + 1
-            return np.stack(read_data("/efs/images/" + self.ids[self.i] + ".aps"))
+            return np.stack(read_data("/efs/images/" + self.ids[self.i - 1] + ".aps"))
         else:
-            raise StopIteration()
+            #Restart iteration, cycle back through
+            self.i = 0
+            #raise StopIteration()
+            return np.stack(read_data("/efs/images/" + self.ids[0] + ".aps"))
 
 class InputLabelsIterator:
     def __init__(self, df, zone, ids):
@@ -166,6 +163,7 @@ class InputLabelsIterator:
         self.zone = zone
         self.i = 0
         test_labels = df[df['id'].isin(ids)]
+        test_labels = test_labels.sort_values("id")
         test_labels = test_labels[test_labels["zone"]==zone]
         test_labels["class0"] = 0
         test_labels["class1"] = 0
@@ -182,7 +180,10 @@ class InputLabelsIterator:
             self.i = self.i + 1
             return(self.test_labels[self.i -1])
         else:
-            raise StopIteration()
+            #Restart iteration, cycle back through
+            self.i = 0
+            #raise StopIteration()
+            return(self.test_labels[0])
 
 def input_labels(df, zone, ids):
     test_labels = df[df['id'].isin(ids)]
@@ -191,7 +192,14 @@ def input_labels(df, zone, ids):
     test_labels["class1"] = 0
     test_labels.loc[test_labels['Probability'] == 0, 'class0'] = 1
     test_labels.loc[test_labels['Probability'] == 1, 'class1'] = 1
-#     test_labels = np.reshape(np.array(test_labels["Probability"].tolist()), [-1,1])
     test_labels = np.reshape(np.array(test_labels[["class0","class1"]]), [-1,2])
-    print("Label shape " + str(test_labels.shape))
     return test_labels
+
+def model_images():
+    filters = tsa_classifier.get_variable_value("conv2d/kernel")
+    print(filters.shape)
+    x = filters[:,:,0,0]
+#plt.imshow(x)
+#plt.show()
+
+
