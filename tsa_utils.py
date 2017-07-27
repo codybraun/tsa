@@ -139,8 +139,9 @@ def input_images(ids):
     return data
 
 class InputImagesIterator:
-    def __init__(self, ids, data_path):
+    def __init__(self, ids, data_path, contrast=1):
         self.ids=ids
+        self.contrast = contrast
         self.data_path=data_path
         self.i = 0
 
@@ -150,7 +151,8 @@ class InputImagesIterator:
     def next(self):
         if self.i < len(self.ids):
             self.i = self.i + 1
-            return np.stack(read_data(self.data_path + "/images/" + self.ids[self.i - 1] + ".aps"))
+            print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
+            return np.stack(read_data(self.data_path + "/images/" + self.ids[self.i - 1] + ".aps") * self.contrast)
         else:
             #Restart iteration, cycle back through
             self.i = 0
@@ -179,6 +181,7 @@ class InputLabelsIterator:
     def next(self):
         if self.i < len(self.ids):
             self.i = self.i + 1
+            print("LABEL" + str(self.test_labels[self.i -1]))
             return(self.test_labels[self.i -1])
         else:
             #Restart iteration, cycle back through

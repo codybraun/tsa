@@ -17,31 +17,35 @@ KERNEL_SIZE1=[3,3]
 XSTRIDE=1
 YSTRIDE=1
 POOLSIZE=5
-STEPS=10000
+STEPS=100000
 XSIZE=512
 YSIZE=660
-LEARNING_RATE=.1
-MODEL_ID="tsa5"
-WEIGHTS=[1, 10]
+LEARNING_RATE=0.001
+MODEL_ID="tsa10"
+WEIGHTS=[1, 5]
 DATA_PATH=os.environ["DATA_PATH"]
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
 def build_model(data, labels, mode):
-    data = tf.reshape(data, [-1, 512, 660, 16])
-    conv1 = tf.layers.conv2d(inputs=data, filters=FILTER_COUNT, kernel_size=KERNEL_SIZE1, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu)
+    data = tf.reshape(data, [BATCH_SIZE, 512, 660, 16])
+    conv1 = tf.layers.conv2d(inputs=data, filters=FILTER_COUNT, kernel_size=KERNEL_SIZE1, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu, name="conv1")
     print ("CONV " + str(conv1))
-    conv2 = tf.layers.conv2d(inputs=conv1, filters=FILTER_COUNT, kernel_size=2, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu)
+    tf.Print(conv1, [conv1], message="CONV1 ")
+    conv2 = tf.layers.conv2d(inputs=conv1, filters=FILTER_COUNT, kernel_size=3, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu, name="conv2")
     print ("CONV2 " + str(conv2))
-    conv3 = tf.layers.conv2d(inputs=conv2, filters=FILTER_COUNT, kernel_size=2, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu)
+    conv3 = tf.layers.conv2d(inputs=conv2, filters=FILTER_COUNT, kernel_size=3, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu, name="conv3")
     print ("CONV3 " + str(conv3))
-    pool1 = tf.layers.max_pooling2d(inputs=conv3, pool_size=[POOLSIZE, POOLSIZE], strides=POOLSIZE)
+    pool1 = tf.layers.max_pooling2d(inputs=conv3, pool_size=[POOLSIZE, POOLSIZE], strides=POOLSIZE, name="pool1")
     print("POOL1" + str(pool1))
-    conv4 = tf.layers.conv2d(inputs=pool1, filters=FILTER_COUNT, kernel_size=2, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu)
+    conv4 = tf.layers.conv2d(inputs=pool1, filters=FILTER_COUNT, kernel_size=3, padding="same", strides=(XSTRIDE, YSTRIDE), activation=tf.nn.relu, name="conv4")
+    conv4=tf.identity(conv4, name="conv4")
     print ("CONV4 " + str(conv4))
-    pool2 = tf.layers.max_pooling2d(inputs=conv4, pool_size=2, strides=2)
+    pool2 = tf.layers.max_pooling2d(inputs=conv4, pool_size=2, strides=2, name="pool2")
     print("POOL2 " + str(pool2))
     flat_pool = tf.reshape(pool2, [BATCH_SIZE, 53856])
+    sum_flat_pool = tf.reduce_sum(flat_pool) 
+    sum_flat_pool=tf.identity(sum_flat_pool, name="sum_flat_pool")
     print ("FLAT POOL " + str(flat_pool))
     logits = tf.layers.dense(inputs=flat_pool, units=2)
     logits =tf.identity(logits, name="logits")
@@ -69,7 +73,7 @@ def build_model(data, labels, mode):
         optimizer="SGD")
     return tf.contrib.learn.ModelFnOps(mode=mode, predictions=predictions, loss=loss, train_op=train_op)
 
-image_df = pd.read_csv('./stage1_labels.csv')
+image_df = pd.read_csv(DATA_PATH + '/stage1_labels.csv')
 image_df['zone'] = image_df['Id'].str.split("_", expand=True)[1].str.strip()
 image_df['id'] = image_df['Id'].str.split("_", expand=True)[0].str.strip()
 
@@ -80,7 +84,7 @@ sess.run(tf.initialize_all_variables())
 tsa_classifier = tf.contrib.learn.Estimator(model_fn=build_model, model_dir="/tmp/" + MODEL_ID)
 
 
-tensors_to_log = {"probabilities": "softmax_tensor", "classes":"classes", "actual":"labels", "logits":"logits"}
+tensors_to_log =  {"probabilities": "softmax_tensor", "classes":"classes", "actual":"labels", "logits":"logits", "sum_flat_pool":"sum_flat_pool"}
 logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=5)
 
 ids = image_df["id"].unique()
@@ -89,7 +93,7 @@ print ("IDS " + str(ids))
 def test_input():
     print("HERE")
 
-tsa_classifier.fit(x=tsa_utils.InputImagesIterator(ids, DATA_PATH), y=tsa_utils.InputLabelsIterator(image_df, "Zone1",ids), steps=STEPS, batch_size=BATCH_SIZE, monitors=[logging_hook])
+tsa_classifier.fit(x=tsa_utils.InputImagesIterator(ids, DATA_PATH, 10), y=tsa_utils.InputLabelsIterator(image_df, "Zone11",ids), steps=STEPS, batch_size=BATCH_SIZE, monitors=[logging_hook])
 
 filters = tsa_classifier.get_variable_value("conv2d/kernel")
 
