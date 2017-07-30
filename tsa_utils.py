@@ -5,7 +5,7 @@ def read_header(infile):
     """Read image header (first 512 bytes)
     """
     h = dict()
-    fid = open(infile, 'r+b')
+    fid = open(infile, 'rb')
     h['filename'] = b''.join(np.fromfile(fid, dtype = 'S1', count = 20))
     h['parent_filename'] = b''.join(np.fromfile(fid, dtype = 'S1', count = 20))
     h['comments1'] = b''.join(np.fromfile(fid, dtype = 'S1', count = 80))
@@ -130,7 +130,7 @@ def read_data(infile):
 def bulk_read_data(image_paths):
     data = []
     for path in image_paths:
-        path = "./images/" + path + ".aps"
+        path = path + ".aps"
         data.append(read_data(path))
     return np.stack(data)
 
@@ -151,13 +151,13 @@ class InputImagesIterator:
     def next(self):
         if self.i < len(self.ids):
             self.i = self.i + 1
-            print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
-            return np.stack(read_data(self.data_path + "/images/" + self.ids[self.i - 1] + ".aps") * self.contrast)
+            #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
+            return np.stack(read_data(self.data_path + self.ids[self.i - 1] + ".aps") * self.contrast)
         else:
             #Restart iteration, cycle back through
             self.i = 0
             #raise StopIteration()
-            return np.stack(read_data(self.data_path + "/images/" + self.ids[0] + ".aps"))
+            return np.stack(read_data(self.data_path + self.ids[0] + ".aps"))
 
 class InputLabelsIterator:
     def __init__(self, df, zone, ids):
@@ -181,7 +181,7 @@ class InputLabelsIterator:
     def next(self):
         if self.i < len(self.ids):
             self.i = self.i + 1
-            print("LABEL" + str(self.test_labels[self.i -1]))
+            #print("LABEL" + str(self.test_labels[self.i -1]))
             return(self.test_labels[self.i -1])
         else:
             #Restart iteration, cycle back through

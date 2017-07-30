@@ -20,8 +20,8 @@ POOLSIZE=5
 STEPS=100000
 XSIZE=512
 YSIZE=660
-LEARNING_RATE=0.1
-MODEL_ID="tsa17"
+LEARNING_RATE=0.01
+MODEL_ID="tsa19"
 WEIGHTS=[1, 1]
 DATA_PATH=os.environ["DATA_PATH"]
 
@@ -34,20 +34,21 @@ def build_model(data, labels, mode):
     tf.Print(conv1, [conv1], message="CONV1 ")
     conv2 = tf.layers.conv2d(inputs=conv1, filters=FILTER_COUNT, kernel_size=25, padding="same", strides=5, activation=tf.nn.relu, name="conv2")
     print ("CONV2 " + str(conv2))
-    pool1 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[POOLSIZE, POOLSIZE], strides=3, name="pool1")
+    pool1 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[POOLSIZE, POOLSIZE], strides=1, name="pool1")
     print("POOL1" + str(pool1))
     conv4 = tf.layers.conv2d(inputs=pool1, filters=FILTER_COUNT, kernel_size=3, padding="same", strides=(2, 2), activation=tf.nn.relu, name="conv4")
     conv4=tf.identity(conv4, name="conv4")
     print ("CONV4 " + str(conv4))
-    pool2 = tf.layers.max_pooling2d(inputs=conv4, pool_size=5, strides=5, name="pool2")
+    pool2 = tf.layers.max_pooling2d(inputs=conv4, pool_size=5, strides=1, name="pool2")
     print("POOL2 " + str(pool2))
-    flat_pool = tf.reshape(pool2, [BATCH_SIZE, 16])
+    flat_pool = tf.reshape(pool2, [BATCH_SIZE, 4320])
     sum_flat_pool = tf.reduce_sum(flat_pool) 
     sum_flat_pool=tf.identity(sum_flat_pool, name="sum_flat_pool")
     print ("FLAT POOL " + str(flat_pool))
     logits = tf.layers.dense(inputs=flat_pool, units=2)
     logits =tf.identity(logits, name="logits")
     logits = tf.reshape(logits, [BATCH_SIZE,2])
+    logits = tf.add(logits, ([([0.000001] * 2)] * BATCH_SIZE))
     print("LOGITS " + str(logits))
     #labels = tf.one_hot(labels, depth=2)
     print ("LABELS " + str(labels))
@@ -57,6 +58,7 @@ def build_model(data, labels, mode):
     class_weights=tf.reduce_sum(tf.multiply(flat_labels, tf.constant(WEIGHTS, dtype=tf.int64)), axis=1)
     print("CLASS WEIGHTS " + str(class_weights))
     loss = tf.losses.softmax_cross_entropy(onehot_labels=test_labels, logits=logits, weights=class_weights)
+    #loss = tf.losses.log_loss(test_labels, logits)
     #loss = tf.losses.mean_squared_error(test_labels, logits)
     predictions = {
         "classes": tf.argmax(
