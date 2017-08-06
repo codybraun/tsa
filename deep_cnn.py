@@ -9,7 +9,6 @@ import pandas as pd
 import sys
 sys.path.append(os.getcwd())
 import tsa_utils
-import itertools
 
 #Model parameters
 BATCH_SIZE = 30
@@ -30,25 +29,30 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 def build_model(data, labels, mode):
     data = tf.reshape(data, [BATCH_SIZE, XSIZE, YSIZE, 16, 1])
-    dropout = tf.layers.dropout(inputs=data, rate=0.1)
-    conv1 = tf.layers.conv3d(inputs=dropout, filters=8, kernel_size=[3,3,16], padding="same", strides=(1,1,1), activation=tf.nn.relu, name="conv1")
+    conv1 = tf.layers.conv3d(inputs=data, filters=8, kernel_size=[3,3,16], padding="same", strides=(1,1,1), activation=tf.nn.relu, name="conv1")
     pool0 = tf.layers.max_pooling3d(inputs=conv1, pool_size=(POOLSIZE, POOLSIZE, 1), strides=(2,2,1),  name="pool1")
     print ("CONV " + str(conv1))
     tf.Print(conv1, [conv1], message="CONV1 ")
     conv2 = tf.layers.conv3d(inputs=pool0, filters=8, kernel_size=[3,3,16], padding="same", strides= (1,1,1), activation=tf.nn.relu, name="conv2")
     print ("CONV2 " + str(conv2))
-    pool1 = tf.layers.max_pooling3d(inputs=conv2, pool_size=(POOLSIZE, POOLSIZE, 1), strides=(2,2,1),  name="pool1")
+    pool1 = tf.layers.max_pooling3d(inputs=conv2, pool_size=(POOLSIZE, POOLSIZE, 1), strides=(1,1,1),  name="pool1")
     print("POOL1" + str(pool1))
-    conv4 = tf.layers.conv3d(inputs=pool1, filters=FILTER_COUNT, kernel_size=[3,3,16], padding="same", strides=2, activation=tf.nn.relu, name="conv4")
-    conv4=tf.identity(conv4, name="conv4")
+    conv3 = tf.layers.conv3d(inputs=pool1, filters=FILTER_COUNT, kernel_size=[3,3,16], padding="same", strides=1, activation=tf.nn.relu, name="conv3")
+    conv4 = tf.layers.conv3d(inputs=conv3, filters=FILTER_COUNT, kernel_size=[3,3,16], padding="same", strides=1, activation=tf.nn.relu, name="conv4")
     print ("CONV4 " + str(conv4))
     pool2 = tf.layers.max_pooling3d(inputs=conv4, pool_size=[3,3,1], strides=(2,2,1), name="pool2")
+    conv5 = tf.layers.conv3d(inputs=pool2, filters=FILTER_COUNT, kernel_size=[3,3,16], padding="same", strides=1, activation=tf.nn.relu, name="conv5")
+    print ("CONV5 " + str(conv5))
+    pool3 = tf.layers.max_pooling3d(inputs=conv5, pool_size=[3,3,1], strides=(1,1,1), name="pool2")
+    conv6 = tf.layers.conv3d(inputs=pool3, filters=FILTER_COUNT, kernel_size=[3,3,16], padding="same", strides=1, activation=tf.nn.relu, name="conv6")
+    conv7 = tf.layers.conv3d(inputs=conv6, filters=FILTER_COUNT, kernel_size=[3,3,16], padding="same", strides=1, activation=tf.nn.relu, name="conv7")
+    print ("CONV7 " + str(conv7))
+    pool2 = tf.layers.max_pooling3d(inputs=conv7, pool_size=[3,3,1], strides=(1,1,1), name="pool2")
+
     print("POOL2 " + str(pool2))
-    flat_pool = tf.reshape(pool2, [BATCH_SIZE, 27648])
+    flat_pool = tf.reshape(pool2, [BATCH_SIZE, 833280])
     sum_flat_pool = tf.reduce_sum(flat_pool) 
     sum_flat_pool=tf.identity(sum_flat_pool, name="sum_flat_pool")
-    sum_data = tf.reduce_sum(data) 
-    sum_data=tf.identity(sum_data, name="sum_data")
     print ("FLAT POOL " + str(flat_pool))
     #dense_layer = tf.layers.dense(inputs=flat_pool, activation=tf.nn.relu, units=200)
     #print ("DENSE LAYER " + str(dense_layer))
@@ -91,21 +95,16 @@ sess.run(tf.initialize_all_variables())
 tsa_classifier = tf.contrib.learn.Estimator(model_fn=build_model, model_dir="/tmp/" + MODEL_ID)
 
 
-tensors_to_log =  {"probabilities": "softmax_tensor", "classes":"classes", "actual":"labels", "logits":"logits", "sum_data":"sum_data", "sum_flat_pool":"sum_flat_pool"}
+tensors_to_log =  {"probabilities": "softmax_tensor", "classes":"classes", "actual":"labels", "logits":"logits", "sum_flat_pool":"sum_flat_pool"}
 logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=5)
 
-ids = image_df["id"].unique()[:30]
+ids = image_df["id"].unique()
+ids = ids[:30]
 ids.sort()
+def test_input():
+    print("HERE")
 
-def get_inputs():
-    x=list(next(tsa_utils.InputImagesIterator(ids, DATA_PATH, 10, "bottom", "right")) for _ in range(BATCH_SIZE))
-    print("X SHAPE " + x.shape)
-    y=tf.constant(list(next(tsa_utils.InputLabelsIterator(image_df, "Zone11",ids)) for _ in range(BATCH_SIZE)))
-    #print(x,y)
-    return x,y
-      
-#tsa_classifier.fit(input_fn=get_inputs, steps=STEPS, monitors=[logging_hook])
-tsa_classifier.fit(x=tsa_utils.InputImagesIterator(ids, DATA_PATH, 10, "bottom", "right"),y=tsa_utils.InputLabelsIterator(image_df, "Zone11",ids), batch_size=BATCH_SIZE, steps=STEPS, monitors=[logging_hook])
+tsa_classifier.fit(x=tsa_utils.InputImagesIterator(ids, DATA_PATH, 10, "bottom", "right"), y=tsa_utils.InputLabelsIterator(image_df, "Zone11",ids), steps=STEPS, batch_size=BATCH_SIZE, monitors=[logging_hook])
 
 filters = tsa_classifier.get_variable_value("conv2d/kernel")
 

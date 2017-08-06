@@ -92,7 +92,7 @@ def read_header(infile):
     return h
 
 
-def read_data(infile):
+def read_data(infile, vertical="both", horizontal="both"):
     """Read any of the 4 types of image files, returns a numpy array of the image contents
     """
     extension = os.path.splitext(infile)[1]
@@ -109,6 +109,21 @@ def read_data(infile):
             data = np.fromfile(fid, dtype = np.uint16, count = nx * ny * nt)
         data = data * h['data_scale_factor'] #scaling factor
         data = data.reshape(nx, ny, nt, order='F').copy() #make N-d image
+        if vertical == "bottom":
+            data = data[:, :440, :] 
+        elif vertical == "top":
+            data = data[:, 220:660, :] 
+        rotated_data = []
+        if horizontal == "right":
+            for i in range(0,16):
+                increment = 10
+                rotated_data.append(data[(i * increment) + 50:(i * increment) + 320,:,i])
+        elif horizontal == "left":
+            for i in range(0,16):
+                increment = 10
+                rotated_data.append(data[170 + (i * increment): 512-(i * increment):,i])
+        if horizontal != "both":
+            data = np.array(rotated_data)    
     elif extension == '.a3d':
         if(h['word_type']==7): #float32
             data = np.fromfile(fid, dtype = np.float32, count = nx * ny * nt)
@@ -127,44 +142,37 @@ def read_data(infile):
     else:
         return real, imag
 
-def bulk_read_data(image_paths):
-    data = []
-    for path in image_paths:
-        path = path + ".aps"
-        data.append(read_data(path))
-    return np.stack(data)
-
-def input_images(ids):
-    data = bulk_read_data(ids)
-    return data
-
 class InputImagesIterator:
-    def __init__(self, ids, data_path, contrast=1):
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both"):
         self.ids=ids
         self.contrast = contrast
         self.data_path=data_path
-        self.i = 0
+        self.i = -1
+        self.vertical = vertical
+        self.horizontal = horizontal
 
     def __iter__(self):
         return self
 
     def next(self):
+        print ("id " + str(self.ids[self.i-1])) 
+        print("image iter " + str(self.i))
         if self.i < len(self.ids):
             self.i = self.i + 1
             #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
-            return np.stack(read_data(self.data_path + self.ids[self.i - 1] + ".aps") * self.contrast)
+            return np.stack(read_data(self.data_path + self.ids[self.i - 1] + ".aps", self.vertical, self.horizontal) * self.contrast)
         else:
             #Restart iteration, cycle back through
-            self.i = 0
+            self.i = -1
             #raise StopIteration()
-            return np.stack(read_data(self.data_path + self.ids[0] + ".aps"))
+            return np.stack(read_data(self.data_path + self.ids[0] + ".aps", self.vertical, self.horizontal))
 
 class InputLabelsIterator:
     def __init__(self, df, zone, ids):
         self.ids=ids
         self.df=df
         self.zone = zone
-        self.i = 0
+        self.i = -1
         test_labels = df[df['id'].isin(ids)]
         test_labels = test_labels.sort_values("id")
         test_labels = test_labels[test_labels["zone"]==zone]
@@ -179,13 +187,16 @@ class InputLabelsIterator:
         return self
 
     def next(self):
+        print("in label iter " + str(self.ids[self.i -1])) 
+        print("in label iter " + str(self.test_labels[self.i -1])) 
+        print("label iter " + str(self.i))
         if self.i < len(self.ids):
             self.i = self.i + 1
             #print("LABEL" + str(self.test_labels[self.i -1]))
             return(self.test_labels[self.i -1])
         else:
             #Restart iteration, cycle back through
-            self.i = 0
+            self.i = -1
             #raise StopIteration()
             return(self.test_labels[0])
 
