@@ -138,7 +138,7 @@ def read_data(infile, vertical="both", horizontal="both"):
         imag = data[1,:,:,:].copy()
     fid.close()
     if extension != '.ahi':
-        return data
+        return np.swapaxes(data, 2, 1)
     else:
         return real, imag
 
@@ -155,8 +155,8 @@ class InputImagesIterator:
         return self
 
     def next(self):
-        print ("id " + str(self.ids[self.i-1])) 
-        print("image iter " + str(self.i))
+        #print ("id " + str(self.ids[self.i-1])) 
+        #print("image iter " + str(self.i))
         if self.i < len(self.ids):
             self.i = self.i + 1
             #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
@@ -187,9 +187,9 @@ class InputLabelsIterator:
         return self
 
     def next(self):
-        print("in label iter " + str(self.ids[self.i -1])) 
-        print("in label iter " + str(self.test_labels[self.i -1])) 
-        print("label iter " + str(self.i))
+        #print("in label iter " + str(self.ids[self.i -1])) 
+        #print("in label iter " + str(self.test_labels[self.i -1])) 
+        #print("label iter " + str(self.i))
         if self.i < len(self.ids):
             self.i = self.i + 1
             #print("LABEL" + str(self.test_labels[self.i -1]))
