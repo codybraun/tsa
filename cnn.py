@@ -43,7 +43,7 @@ def build_model(data, labels, mode):
     print ("CONV4 " + str(conv4))
     pool2 = tf.layers.max_pooling3d(inputs=conv4, pool_size=(1,4,4), strides=2, name="pool2")
     print("POOL2 " + str(pool2))
-    flat_pool = tf.reshape(pool2, [BATCH_SIZE, 672])
+    flat_pool = tf.reshape(pool2, [BATCH_SIZE, 5376])
     sum_flat_pool = tf.reduce_sum(flat_pool) 
     sum_flat_pool=tf.identity(sum_flat_pool, name="sum_flat_pool")
     sum_data = tf.reduce_sum(data, axis=[1,2,3])

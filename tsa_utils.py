@@ -110,9 +110,9 @@ def read_data(infile, vertical="both", horizontal="both"):
         data = data * h['data_scale_factor'] #scaling factor
         data = data.reshape(nx, ny, nt, order='F').copy() #make N-d image
         if vertical == "bottom":
-            data = data[:, :440, :] 
+            data = data[:, :340, :] 
         elif vertical == "top":
-            data = data[:, 220:660, :] 
+            data = data[:, 320:660, :] 
         rotated_data = []
         if horizontal == "right":
             for i in range(0,16):
@@ -165,7 +165,7 @@ class InputImagesIterator:
             #Restart iteration, cycle back through
             self.i = -1
             #raise StopIteration()
-            return np.stack(read_data(self.data_path + self.ids[0] + ".aps", self.vertical, self.horizontal))
+            return np.stack(read_data(self.data_path + self.ids[0] + ".aps", self.vertical, self.horizontal) * self.contrast)
 
 class InputLabelsIterator:
     def __init__(self, df, zone, ids):
