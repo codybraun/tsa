@@ -113,6 +113,8 @@ def read_data(infile, vertical="both", horizontal="both"):
             data = data[:, :340, :] 
         elif vertical == "top":
             data = data[:, 320:660, :] 
+        elif vertical == "middle":
+            data = data[:, 170:510, :] 
         rotated_data = []
         if horizontal == "right":
             for i in range(0,16):
@@ -121,7 +123,11 @@ def read_data(infile, vertical="both", horizontal="both"):
         elif horizontal == "left":
             for i in range(0,16):
                 increment = 10
-                rotated_data.append(data[170 + (i * increment): 512-(i * increment):,i])
+                rotated_data.append(data[210 - (i * increment): 480-(i * increment):,:,i])
+        elif horizontal == "middle":
+            for i in range(0,16):
+                increment = 10
+                rotated_data.append(data[130:400,:,i])
         if horizontal != "both":
             data = np.array(rotated_data)    
     elif extension == '.a3d':
@@ -157,10 +163,10 @@ class InputImagesIterator:
     def next(self):
         #print ("id " + str(self.ids[self.i-1])) 
         #print("image iter " + str(self.i))
-        if self.i < len(self.ids):
+        if self.i < len(self.ids) -1:
             self.i = self.i + 1
             #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
-            return np.stack(read_data(self.data_path + self.ids[self.i - 1] + ".aps", self.vertical, self.horizontal) * self.contrast)
+            return np.stack(read_data(self.data_path + self.ids[self.i] + ".aps", self.vertical, self.horizontal) * self.contrast)
         else:
             #Restart iteration, cycle back through
             self.i = -1
@@ -168,20 +174,10 @@ class InputImagesIterator:
             return np.stack(read_data(self.data_path + self.ids[0] + ".aps", self.vertical, self.horizontal) * self.contrast)
 
 class InputLabelsIterator:
-    def __init__(self, df, zone, ids):
+    def __init__(self, ids, labels):
         self.ids=ids
-        self.df=df
-        self.zone = zone
-        self.i = -1
-        test_labels = df[df['id'].isin(ids)]
-        test_labels = test_labels.sort_values("id")
-        test_labels = test_labels[test_labels["zone"]==zone]
-        test_labels["class0"] = 0
-        test_labels["class1"] = 0
-        test_labels.loc[test_labels['Probability'] == 0, 'class0'] = 1
-        test_labels.loc[test_labels['Probability'] == 1, 'class1'] = 1
-        test_labels = np.reshape(np.array(test_labels[["class0","class1"]]), [-1,2])
-        self.test_labels = test_labels
+        self.labels=labels
+        self.i=-1
 
     def __iter__(self):
         return self
@@ -190,31 +186,12 @@ class InputLabelsIterator:
         #print("in label iter " + str(self.ids[self.i -1])) 
         #print("in label iter " + str(self.test_labels[self.i -1])) 
         #print("label iter " + str(self.i))
-        if self.i < len(self.ids):
+        if self.i < len(self.ids) -1:
             self.i = self.i + 1
             #print("LABEL" + str(self.test_labels[self.i -1]))
-            return(self.test_labels[self.i -1])
+            return(self.labels[self.i])
         else:
             #Restart iteration, cycle back through
             self.i = -1
             #raise StopIteration()
-            return(self.test_labels[0])
-
-def input_labels(df, zone, ids):
-    test_labels = df[df['id'].isin(ids)]
-    test_labels = test_labels[test_labels["zone"]==zone]
-    test_labels["class0"] = 0
-    test_labels["class1"] = 0
-    test_labels.loc[test_labels['Probability'] == 0, 'class0'] = 1
-    test_labels.loc[test_labels['Probability'] == 1, 'class1'] = 1
-    test_labels = np.reshape(np.array(test_labels[["class0","class1"]]), [-1,2])
-    return test_labels
-
-def model_images():
-    filters = tsa_classifier.get_variable_value("conv2d/kernel")
-    print(filters.shape)
-    x = filters[:,:,0,0]
-#plt.imshow(x)
-#plt.show()
-
-
+            return(self.labels[0])
