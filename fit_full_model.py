@@ -16,6 +16,7 @@ import mini_cnn
 
 
 DATA_PATH=os.environ["DATA_PATH"]
+CHECKPOINT_PATH=os.environ["CHECKPOINT_PATH"]
 MODEL_ID=os.environ["MODEL_ID"]
 
 image_df = pd.read_csv(DATA_PATH + '/stage1_labels.csv')
@@ -58,7 +59,7 @@ with tf.Session() as sess:
 		train_labels.loc[train_labels['Probability'] == 0, 'class0'] = 1
 		train_labels.loc[train_labels['Probability'] == 1, 'class1'] = 1
 		train_labels = np.reshape(np.array(train_labels[["class0","class1"]]), [-1,2])
-		model = deep_cnn.ZoneModel(MODEL_ID, training_ids, "Zone" + str(zone), slice_locations[zone][1], slice_locations[zone][0], DATA_PATH, train_labels)
+		model = deep_cnn.ZoneModel(MODEL_ID, training_ids, "Zone" + str(zone), slice_locations[zone][1], slice_locations[zone][0], DATA_PATH, train_labels, CHECKPOINT_PATH)
 		model.train_model(tensors_to_log)
 
 

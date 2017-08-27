@@ -33,16 +33,22 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 class ZoneModel():
 
-    def __init__(self, model_id, ids, zone, x_slice, y_slice, data_path, labels):
+    def __init__(self, model_id, ids, zone, x_slice, y_slice, data_path, labels, checkpoint_path="./"):
         self.model_id = model_id
         self.ids = ids
         self.zone = zone
         self.x_slice = x_slice
         self.y_slice = y_slice
         self.data_path = data_path
+        self.checkpoint_path = checkpoint_path
         self.labels = labels
 
     def build_model(self, data, labels, mode):
+        print(data, labels, mode)
+        if mode == tf.contrib.learn.ModeKeys.INFER:
+            BATCH_SIZE=1
+        else:
+            BATCH_SIZE=30
         data = tf.reshape(data, [BATCH_SIZE, IMAGE_DEPTH, YSIZE, XSIZE, CHANNELS])
         conv1 = tf.layers.conv3d(inputs=data, filters=FILTER_COUNT, kernel_size=KERNEL_SIZE1, padding="same", strides=(DEPTHSTRIDE,XSTRIDE,YSTRIDE), name="conv1")
         pool1 = tf.layers.max_pooling3d(inputs=conv1, pool_size=POOLSIZE1, strides=POOL_STRIDES, name="pool1")
@@ -60,25 +66,28 @@ class ZoneModel():
         logits =tf.identity(logits, name="logits")
         logits = tf.reshape(logits, [BATCH_SIZE,2])
 
-        flat_labels = tf.reshape(labels, [BATCH_SIZE, 2])
-        test_labels=tf.identity(flat_labels, name="labels")
-        class_weights=tf.reduce_sum(tf.multiply(flat_labels, tf.constant(WEIGHTS, dtype=tf.int64)), axis=1)
-        loss = tf.losses.softmax_cross_entropy(onehot_labels=test_labels, logits=logits, weights=class_weights)
+        if mode == tf.contrib.learn.ModeKeys.TRAIN:
+            flat_labels = tf.reshape(labels, [BATCH_SIZE, 2])
+            test_labels=tf.identity(flat_labels, name="labels")
+            class_weights=tf.reduce_sum(tf.multiply(flat_labels, tf.constant(WEIGHTS, dtype=tf.int64)), axis=1)
+            loss = tf.losses.softmax_cross_entropy(onehot_labels=test_labels, logits=logits, weights=class_weights)
+            train_op = tf.contrib.layers.optimize_loss(
+                loss=loss,
+                global_step=tf.contrib.framework.get_global_step(),
+                learning_rate=LEARNING_RATE,
+                optimizer="SGD")
         predictions = {
             "classes": tf.argmax(
               input=logits, axis=1, name="classes"),
           "probabilities": tf.nn.softmax(
               logits, name="softmax_tensor")}
-        train_op = tf.contrib.layers.optimize_loss(
-            loss=loss,
-            global_step=tf.contrib.framework.get_global_step(),
-            learning_rate=LEARNING_RATE,
-            optimizer="SGD")
-
+        if mode == tf.contrib.learn.ModeKeys.INFER:
+            return tf.contrib.learn.ModelFnOps(mode=mode, predictions=predictions)
         return tf.contrib.learn.ModelFnOps(mode=mode, predictions=predictions, loss=loss, train_op=train_op)
 
     def train_model(self, tensors_to_log):
-        tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, model_dir="/output/" + self.model_id + self.zone)
+        tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, 
+                                                    model_dir=self.checkpoint_path + self.model_id + self.zone)
         logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=500)
         tsa_classifier.fit(
             x=tsa_utils.InputImagesIterator(self.ids, self.data_path, 10000, self.y_slice, self.x_slice), 
@@ -90,8 +99,15 @@ class ZoneModel():
 
     def load_model(self):
         with tf.Session() as sess:
-            saver = tf.train.import_meta_graph(self.data_path + 'model.ckpt-' + str(STEPS) + '.meta')
-            saver.restore(sess, tf.train.latest_checkpoint(self.data_path))
-            tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, model_dir="/output/" + self.model_id + self.zone)
+            saver = tf.train.import_meta_graph(self.checkpoint_path + self.model_id + self.zone + '/model.ckpt-' + str(STEPS) + '.meta')
+            saver.restore(sess, tf.train.latest_checkpoint(self.checkpoint_path + self.model_id + self.zone))
+            tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, 
+                                                        model_dir=self.checkpoint_path + self.model_id + self.zone)
             self.model = tsa_classifier
 
+    def predict(self):
+        return self.model.predict(x=tsa_utils.InputImagesIterator(self.ids, 
+                                                            self.data_path, 
+                                                            10000, 
+                                                            self.y_slice,
+                                                            self.x_slice))

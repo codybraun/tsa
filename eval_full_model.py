@@ -8,6 +8,8 @@ from numpy import genfromtxt
 import pandas as pd
 import sys
 import math 
+import sklearn
+from sklearn import metrics
 
 sys.path.append(os.getcwd())
 import tsa_utils
@@ -45,9 +47,10 @@ slice_locations = {1:("top","right"),
 	15:("bottom","right"),
 	16:("bottom","left")
 }
-
+csv_file = open(".submission.csv")
+csv.write("Id,Probability\n")
 for zone in range(1,17):
-	print("FITTING MODEL FOR ZONE " + str(zone))
+	print("EVALUATING MODEL FOR ZONE " + str(zone))
 	labels = labels[labels["zone"]=="Zone"+str(zone)]
 	labels["class0"] = 0
 	labels["class1"] = 0
@@ -56,9 +59,11 @@ for zone in range(1,17):
 	labels = np.reshape(np.array(labels[["class0","class1"]]), [-1,2])
 
 	#model = deep_cnn.ZoneModel(MODEL_ID, ids, "Zone" + str(i), slice_locations[i][1], slice_locations[i][0], DATA_PATH, image_df)
-	model = deep_cnn.ZoneModel(MODEL_ID, ids, "Zone" + str(zone), slice_locations[zone][1], slice_locations[zone][0], DATA_PATH, labels)
+	model = deep_cnn.ZoneModel(MODEL_ID, ids, "Zone" + str(zone), slice_locations[zone][1], slice_locations[zone][0], DATA_PATH, labels, checkpoint_path=os.environ["CHECKPOINT_PATH"])
 	model.load_model()
-	predicted = model.predict(ids)
-	loss = sklearn.metrics.log_loss(labels, predicted)
+	predicted = list(model.predict())
+	print(labels, predicted)
+	loss = metrics.log_loss(labels, predicted)
 	print ("LOSS OF " + loss + " IN ZONE " + str(zone))
+
 
