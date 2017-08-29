@@ -33,7 +33,7 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 class ZoneModel():
 
-    def __init__(self, model_id, ids, zone, x_slice, y_slice, data_path, labels, checkpoint_path="./"):
+    def __init__(self, model_id, ids, zone, x_slice, y_slice, data_path, labels, checkpoint_path="."):
         self.model_id = model_id
         self.ids = ids
         self.zone = zone
@@ -87,7 +87,7 @@ class ZoneModel():
 
     def train_model(self, tensors_to_log):
         tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, 
-                                                    model_dir=self.checkpoint_path + self.model_id + self.zone)
+                                                    model_dir=self.checkpoint_path + "/" + self.model_id + self.zone)
         logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=500)
         tsa_classifier.fit(
             x=tsa_utils.InputImagesIterator(self.ids, self.data_path, 10000, self.y_slice, self.x_slice), 
@@ -99,10 +99,12 @@ class ZoneModel():
 
     def load_model(self):
         with tf.Session() as sess:
-            saver = tf.train.import_meta_graph(self.checkpoint_path + self.model_id + self.zone + '/model.ckpt-' + str(STEPS) + '.meta')
-            saver.restore(sess, tf.train.latest_checkpoint(self.checkpoint_path + self.model_id + self.zone))
+            saver = tf.train.import_meta_graph(self.checkpoint_path + "/" + self.model_id + self.zone + '/model.ckpt-' + str(STEPS) + '.meta')
+            saver.restore(sess, tf.train.latest_checkpoint(self.checkpoint_path + "/" + self.model_id + self.zone))
+            print ("SAVER READY")
             tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, 
-                                                        model_dir=self.checkpoint_path + self.model_id + self.zone)
+                                                        model_dir=self.checkpoint_path + "/" + self.model_id + self.zone)
+            print ("CLASSIFIER " + str(tsa_classifier))
             self.model = tsa_classifier
 
     def predict(self):
@@ -110,4 +112,4 @@ class ZoneModel():
                                                             self.data_path, 
                                                             10000, 
                                                             self.y_slice,
-                                                            self.x_slice))
+                                                            self.x_slice, False))

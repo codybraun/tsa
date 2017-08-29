@@ -19,16 +19,16 @@ import mini_cnn
 
 DATA_PATH=os.environ["DATA_PATH"]
 MODEL_ID=os.environ["MODEL_ID"]
+CHECKPOINT_PATH=os.environ["CHECKPOINT_PATH"]
 
-image_df = pd.read_csv(DATA_PATH + '/stage1_sample_submission.csv')
+image_df = pd.read_csv(DATA_PATH + 'stage1_sample_submission.csv')
 image_df['zone'] = image_df['Id'].str.split("_", expand=True)[1].str.strip()
 image_df['id'] = image_df['Id'].str.split("_", expand=True)[0].str.strip()
 
 ids = image_df["id"].unique()
 ids.sort()
-
 labels = image_df[image_df['id'].isin(ids)]
-labels = labels.sort_values("id")
+all_labels = labels.sort_values("id")
 
 slice_locations = {1:("top","right"),
 	2:("middle","right"), 
@@ -47,11 +47,11 @@ slice_locations = {1:("top","right"),
 	15:("bottom","right"),
 	16:("bottom","left")
 }
-csv_file = open(".submission.csv")
-csv.write("Id,Probability\n")
+csv_file = open(CHECKPOINT_PATH + "/submission.csv", "w+")
+csv_file.write("Id,Probability\n")
 for zone in range(1,17):
 	print("EVALUATING MODEL FOR ZONE " + str(zone))
-	labels = labels[labels["zone"]=="Zone"+str(zone)]
+	labels = all_labels[all_labels["zone"]=="Zone"+str(zone)]
 	labels["class0"] = 0
 	labels["class1"] = 0
 	labels.loc[labels['Probability'] == 0, 'class0'] = 1
@@ -59,11 +59,13 @@ for zone in range(1,17):
 	labels = np.reshape(np.array(labels[["class0","class1"]]), [-1,2])
 
 	#model = deep_cnn.ZoneModel(MODEL_ID, ids, "Zone" + str(i), slice_locations[i][1], slice_locations[i][0], DATA_PATH, image_df)
-	model = deep_cnn.ZoneModel(MODEL_ID, ids, "Zone" + str(zone), slice_locations[zone][1], slice_locations[zone][0], DATA_PATH, labels, checkpoint_path=os.environ["CHECKPOINT_PATH"])
+	model = deep_cnn.ZoneModel(MODEL_ID, ids, "Zone" + str(zone), slice_locations[zone][1], slice_locations[zone][0], DATA_PATH, labels, checkpoint_path=CHECKPOINT_PATH)
 	model.load_model()
-	predicted = list(model.predict())
-	print(labels, predicted)
-	loss = metrics.log_loss(labels, predicted)
-	print ("LOSS OF " + loss + " IN ZONE " + str(zone))
+	print ("LOADED MODEL " + str(model))
+	predicted = np.array([x["probabilities"][1] for x in list(model.predict())])
+	for i, prediction in enumerate(predicted):
+		csv_file.write(str(ids[i]) + "_Zone" + str(zone) + "," + str(prediction) + "\n")
+csv_file.close()
+
 
 

@@ -149,28 +149,30 @@ def read_data(infile, vertical="both", horizontal="both"):
         return real, imag
 
 class InputImagesIterator:
-    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both"):
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True):
         self.ids=ids
         self.contrast = contrast
         self.data_path=data_path
         self.i = -1
         self.vertical = vertical
         self.horizontal = horizontal
+        self.repeating = repeating
 
     def __iter__(self):
         return self
 
     def next(self):
-        #print ("id " + str(self.ids[self.i-1])) 
-        #print("image iter " + str(self.i))
+        # print ("id " + str(self.ids[self.i-1])) 
+        # print("image iter " + str(self.i))
         if self.i < len(self.ids) -1:
             self.i = self.i + 1
             #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
             return np.stack(read_data(self.data_path + self.ids[self.i] + ".aps", self.vertical, self.horizontal) * self.contrast)
         else:
+            if not self.repeating:
+                raise StopIteration()
             #Restart iteration, cycle back through
             self.i = -1
-            #raise StopIteration()
             return np.stack(read_data(self.data_path + self.ids[0] + ".aps", self.vertical, self.horizontal) * self.contrast)
 
 class InputLabelsIterator:

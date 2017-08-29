@@ -45,7 +45,8 @@ slice_locations = {1:("top","right"),
 	13:("bottom","right"),
 	14:("bottom","left"),
 	15:("bottom","right"),
-	16:("bottom","left")
+	16:("bottom","left"),
+	17:("top","middle")
 }
 tensors_to_log =  {"probabilities": "softmax_tensor",
                     "actual":"labels"}
