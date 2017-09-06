@@ -95,17 +95,17 @@ class ZoneModel():
             steps=STEPS, 
             batch_size=BATCH_SIZE, 
             monitors=[logging_hook])
-        self.mode = tsa_classifier
+        self.model = tsa_classifier
 
     def load_model(self):
-        with tf.Session() as sess:
-            saver = tf.train.import_meta_graph(self.checkpoint_path + "/" + self.model_id + self.zone + '/model.ckpt-' + str(STEPS) + '.meta')
-            saver.restore(sess, tf.train.latest_checkpoint(self.checkpoint_path + "/" + self.model_id + self.zone))
-            print ("SAVER READY")
-            tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, 
-                                                        model_dir=self.checkpoint_path + "/" + self.model_id + self.zone)
-            print ("CLASSIFIER " + str(tsa_classifier))
-            self.model = tsa_classifier
+        tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, 
+                                                    model_dir=self.checkpoint_path + "/" + self.model_id + self.zone)
+        self.model = tsa_classifier
+
+    def bootstrap_model(self):
+        tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, 
+                                                    model_dir=self.checkpoint_path)
+        self.model = tsa_classifier
 
     def predict(self):
         return self.model.predict(x=tsa_utils.InputImagesIterator(self.ids, 

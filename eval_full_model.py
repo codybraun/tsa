@@ -49,7 +49,7 @@ slice_locations = {1:("top","right"),
 }
 csv_file = open(CHECKPOINT_PATH + "/submission.csv", "w+")
 csv_file.write("Id,Probability\n")
-for zone in range(1,17):
+for zone in range(1,18):
 	print("EVALUATING MODEL FOR ZONE " + str(zone))
 	labels = all_labels[all_labels["zone"]=="Zone"+str(zone)]
 	labels["class0"] = 0
