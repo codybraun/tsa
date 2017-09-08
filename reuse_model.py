@@ -52,7 +52,7 @@ tensors_to_log =  {"probabilities": "softmax_tensor",
                     "actual":"labels"}
 
 with tf.Session() as sess:
-	for zone in range(17,18):
+	for zone in range(1,18):
 		print("FITTING MODEL FOR ZONE " + str(zone))
 		train_labels = labels[labels["zone"]=="Zone"+str(zone)]
 		train_labels["class0"] = 0
@@ -61,7 +61,7 @@ with tf.Session() as sess:
 		train_labels.loc[train_labels['Probability'] == 1, 'class1'] = 1
 		train_labels = np.reshape(np.array(train_labels[["class0","class1"]]), [-1,2])
 		model = deep_cnn.ZoneModel(MODEL_ID, training_ids, "Zone" + str(zone), slice_locations[zone][1], slice_locations[zone][0], DATA_PATH, train_labels, CHECKPOINT_PATH)
-		model.bootstrap_model()
+		model.load_model()
 		model.train_model(tensors_to_log)
 
 

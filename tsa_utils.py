@@ -128,8 +128,10 @@ def read_data(infile, vertical="both", horizontal="both"):
             for i in range(0,16):
                 increment = 10
                 rotated_data.append(data[130:400,:,i])
-        if horizontal != "both":
-            data = np.array(rotated_data)    
+        else:
+            for i in range(0,16):
+                rotated_data.append(data[:,:,i])
+        data = np.array(rotated_data)    
     elif extension == '.a3d':
         if(h['word_type']==7): #float32
             data = np.fromfile(fid, dtype = np.float32, count = nx * ny * nt)

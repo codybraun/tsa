@@ -45,9 +45,11 @@ slice_locations = {1:("top","right"),
 	13:("bottom","right"),
 	14:("bottom","left"),
 	15:("bottom","right"),
-	16:("bottom","left")
+	16:("bottom","left"),
+	17:("top","middle")
+
 }
-csv_file = open(CHECKPOINT_PATH + "/submission.csv", "w+")
+csv_file = open(CHECKPOINT_PATH + "/submission2.csv", "w+")
 csv_file.write("Id,Probability\n")
 for zone in range(1,18):
 	print("EVALUATING MODEL FOR ZONE " + str(zone))

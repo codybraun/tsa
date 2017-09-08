@@ -20,7 +20,7 @@ YSTRIDE=1
 POOLSIZE1=3
 POOLSIZE2=(1,3,3)
 POOL_STRIDES=(2,2,2)
-STEPS=100
+STEPS=20000
 XSIZE=270
 YSIZE=340
 LEARNING_RATE=0.001
@@ -36,7 +36,7 @@ class ZoneModel():
     def __init__(self, model_id, ids, zone, x_slice, y_slice, data_path, labels, checkpoint_path="."):
         self.model_id = model_id
         self.ids = ids
-        self.zone = zone
+        self.zone = zone if zone else ""
         self.x_slice = x_slice
         self.y_slice = y_slice
         self.data_path = data_path
@@ -100,6 +100,7 @@ class ZoneModel():
     def load_model(self):
         tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, 
                                                     model_dir=self.checkpoint_path + "/" + self.model_id + self.zone)
+        print ("LOADED MODEL AT STEP " + str(tsa_classifier.get_variable_value("global_step")))
         self.model = tsa_classifier
 
     def bootstrap_model(self):
