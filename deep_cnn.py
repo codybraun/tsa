@@ -11,18 +11,20 @@ sys.path.append(os.getcwd())
 import tsa_utils
 
 #Model parameters
-BATCH_SIZE=30
-FILTER_COUNT=8
-KERNEL_SIZE1=(16,3,3)
+BATCH_SIZE=10
+FILTER_COUNT=12
+KERNEL_SIZE1=(3,6,6)
 DEPTHSTRIDE=1
-XSTRIDE=1
-YSTRIDE=1
+XSTRIDE=2
+YSTRIDE=2
 POOLSIZE1=3
 POOLSIZE2=(1,3,3)
 POOL_STRIDES=(2,2,2)
 STEPS=20000
-XSIZE=270
-YSIZE=340
+#XSIZE=270
+#YSIZE=340
+XSIZE=512
+YSIZE=660
 LEARNING_RATE=0.001
 IMAGE_DEPTH=16
 CHANNELS=1
@@ -48,18 +50,18 @@ class ZoneModel():
         if mode == tf.contrib.learn.ModeKeys.INFER:
             BATCH_SIZE=1
         else:
-            BATCH_SIZE=30
+            BATCH_SIZE=10
         data = tf.reshape(data, [BATCH_SIZE, IMAGE_DEPTH, YSIZE, XSIZE, CHANNELS])
         conv1 = tf.layers.conv3d(inputs=data, filters=FILTER_COUNT, kernel_size=KERNEL_SIZE1, padding="same", strides=(DEPTHSTRIDE,XSTRIDE,YSTRIDE), name="conv1")
         pool1 = tf.layers.max_pooling3d(inputs=conv1, pool_size=POOLSIZE1, strides=POOL_STRIDES, name="pool1")
         conv2 = tf.layers.conv3d(inputs=pool1, filters=FILTER_COUNT, kernel_size=(2,3,3), padding="same", strides=(1, 1, 1), name="conv2", activation=tf.nn.relu)
         pool2 = tf.layers.max_pooling3d(inputs=conv2, pool_size=POOLSIZE1, strides=POOL_STRIDES, name="pool2")
-        conv3 = tf.layers.conv3d(inputs=pool2, filters=FILTER_COUNT, kernel_size=KERNEL_SIZE1, padding="same", strides=(DEPTHSTRIDE,XSTRIDE,YSTRIDE), name="conv3")
+        conv3 = tf.layers.conv3d(inputs=pool2, filters=FILTER_COUNT, kernel_size=(2,3,3), padding="same", strides=(DEPTHSTRIDE,XSTRIDE,YSTRIDE), name="conv3")
         pool3 = tf.layers.max_pooling3d(inputs=conv3, pool_size=POOLSIZE1, strides=POOL_STRIDES, name="pool1")
         conv4 = tf.layers.conv3d(inputs=pool3, filters=FILTER_COUNT, kernel_size=(2,3,3), padding="same", strides=(1, 1, 1), name="conv4", activation=tf.nn.relu)
         pool4 = tf.layers.max_pooling3d(inputs=conv4, pool_size=POOLSIZE2, strides=POOL_STRIDES, name="pool2")
         
-        flat_pool = tf.reshape(pool2, [BATCH_SIZE, 133056])
+        flat_pool = tf.reshape(pool2, [BATCH_SIZE, 183708])
         flat_pool=tf.identity(flat_pool, name="flat_pool")
 
         logits = tf.layers.dense(inputs=flat_pool, units=2)

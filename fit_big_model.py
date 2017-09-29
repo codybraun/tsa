@@ -41,7 +41,7 @@ with tf.Session() as sess:
 	train_labels["class0"] = 0
 	train_labels["class1"] = 0
 	train_labels.loc[train_labels['Probability'] == 0, 'class0'] = 1
-	train_labels.loc[train_labels['Probability'] == 1, 'class1'] = 1
+	train_labels.loc[train_labels['Probability'] > 0, 'class1'] = 1
 	train_labels = np.reshape(np.array(train_labels[["class0","class1"]]), [-1,2])
 	model = deep_cnn.ZoneModel(MODEL_ID, training_ids, None, None, None, DATA_PATH, train_labels, CHECKPOINT_PATH)
 	model.bootstrap_model()
