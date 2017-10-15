@@ -9,7 +9,8 @@ import pandas as pd
 import sys
 sys.path.append(os.getcwd())
 import tsa_utils
-from params import *
+from flat_params import *
+
 tf.logging.set_verbosity(tf.logging.INFO)
 
 class ZoneModel():
@@ -33,17 +34,25 @@ class ZoneModel():
         data = tf.reshape(data, [BATCH_SIZE, IMAGE_DEPTH, YSIZE, XSIZE, CHANNELS])
         conv1 = tf.layers.conv3d(inputs=data, filters=FILTER_COUNT, kernel_size=KERNEL_SIZE1, padding="same", 
                 strides=(DEPTHSTRIDE,XSTRIDE,YSTRIDE), name="conv1", trainable=not self.localize)
-        pool1 = tf.layers.max_pooling3d(inputs=conv1, pool_size=POOLSIZE1, strides=POOL_STRIDES, name="pool1")
-        conv2 = tf.layers.conv3d(inputs=pool1, filters=FILTER_COUNT, kernel_size=(2,3,3), padding="same",
+        print(conv1)
+        conv2 = tf.layers.conv3d(inputs=conv1, filters=FILTER_COUNT, kernel_size=(3,3,3), padding="same",
                 strides=(1, 1, 1), name="conv2", activation=tf.nn.relu, trainable=not self.localize)
-        pool2 = tf.layers.max_pooling3d(inputs=conv2, pool_size=POOLSIZE1, strides=POOL_STRIDES, name="pool2")
-        conv3 = tf.layers.conv3d(inputs=pool2, filters=FILTER_COUNT, kernel_size=(2,3,3), padding="same", 
-                strides=(DEPTHSTRIDE,XSTRIDE,YSTRIDE), name="conv3", trainable=not self.localize)
-        pool3 = tf.layers.max_pooling3d(inputs=conv3, pool_size=POOLSIZE1, strides=POOL_STRIDES, name="pool1")
-        conv4 = tf.layers.conv3d(inputs=pool3, filters=FILTER_COUNT, kernel_size=(2,3,3), padding="same", 
-                strides=(1, 1, 1), name="conv4", activation=tf.nn.relu, trainable=not self.localize)
-        pool4 = tf.layers.max_pooling3d(inputs=conv4, pool_size=POOLSIZE2, strides=POOL_STRIDES, name="pool2")
-        
+        print(conv2)
+        pool1 = tf.layers.max_pooling3d(inputs=conv2, pool_size=POOLSIZE1, strides=POOL_STRIDES1, name="pool1")
+        print(pool1)
+        flattener = tf.reshape(pool1, [BATCH_SIZE, 164, 127, 24])
+        pool2 = tf.layers.max_pooling2d(inputs=flattener, pool_size=(3,3), strides=(3,3), name="pool2")
+        print(pool2)
+        conv3 = tf.layers.conv2d(inputs=pool2, filters=FILTER_COUNT, kernel_size=(3,3), padding="same", 
+                strides=(XSTRIDE,YSTRIDE), name="conv3", trainable=not self.localize)
+        print(conv3)
+        pool3 = tf.layers.max_pooling2d(inputs=conv3, pool_size=(2,2), strides=POOL_STRIDES, name="pool1")
+        print(pool3)
+        conv4 = tf.layers.conv2d(inputs=pool3, filters=FILTER_COUNT, kernel_size=(3,3), padding="same", 
+                strides=(1, 1), name="conv4", activation=tf.nn.relu, trainable=not self.localize)
+        print(conv4)
+        pool4 = tf.layers.max_pooling2d(inputs=conv4, pool_size=POOLSIZE2, strides=POOL_STRIDES, name="pool2")
+        print(pool4)
         flat_pool = tf.reshape(pool2, [BATCH_SIZE, FLAT_POOL_SIZE])
         flat_pool=tf.identity(flat_pool, name="flat_pool")
 
@@ -88,7 +97,7 @@ class ZoneModel():
     def load_model(self):
         tsa_classifier = tf.contrib.learn.Estimator(model_fn=self.build_model, 
                                                     model_dir=self.checkpoint_path + "/" + self.model_id + self.zone)
-        print ("LOADED MODEL AT STEP " + str(tsa_classifier.get_variable_value("global_step")))
+        print ("LOADED MODEL AT STEP " + str(tsa_classifier.get_variable_value("global_step")) + " FROM " + self.checkpoint_path + "/" + self.model_id + self.zone)
         self.model = tsa_classifier
 
     def bootstrap_model(self, path=None):

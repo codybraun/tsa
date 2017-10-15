@@ -17,8 +17,8 @@ import mini_cnn
 
 from shutil import copytree
 
-for zone in range(1,18):
-	copytree("/models/tsa_flat", "/output/tsa4Zone" +str(zone))
+# for zone in range(1,18):
+# 	copytree("/models/tsa_flat", "/output/tsa_flatZone" +str(zone))
 
 DATA_PATH=os.environ["DATA_PATH"]
 CHECKPOINT_PATH=os.environ["CHECKPOINT_PATH"]
@@ -35,24 +35,6 @@ training_ids = ids
 labels = image_df[image_df['id'].isin(training_ids)]
 labels = labels.sort_values("id")
 
-slice_locations = {1:("top","right"),
-	2:("middle","right"), 
-	3:("top","left"),
-	4:("middle","left"),
-	5:("top","middle"),
-	6:("top","right"),
-	7:("top","left"),
-	8:("middle","right"),
-	9:("middle","middle"),
-	10:("middle","left"),
-	11:("bottom","right"),
-	12:("bottom","left"),
-	13:("bottom","right"),
-	14:("bottom","left"),
-	15:("bottom","right"),
-	16:("bottom","left"),
-	17:("top","middle")
-}
 tensors_to_log =  {"probabilities": "softmax_tensor",
                     "actual":"labels"}
 
@@ -66,6 +48,6 @@ with tf.Session() as sess:
 		train_labels.loc[train_labels['Probability'] == 1, 'class1'] = 1
 		train_labels = np.reshape(np.array(train_labels[["class0","class1"]]), [-1,2])
 		#model = deep_cnn.ZoneModel(MODEL_ID, training_ids, "Zone" + str(zone), None, None, DATA_PATH, train_labels, CHECKPOINT_PATH, localize=True)
-		model = flattened_cnn2.ZoneModel(MODEL_ID, training_ids, "Zone" + str(zone), None, None, DATA_PATH, train_labels, CHECKPOINT_PATH, localize=True)
-		model.bootstrap_model()
-		model.train_model(tensors_to_log, reuse=True)
+		model = flattened_cnn2.ZoneModel(MODEL_ID, training_ids, "Zone" + str(zone), None, None, DATA_PATH, train_labels, CHECKPOINT_PATH, localize=False)
+		#model.bootstrap_model()
+		model.train_model(tensors_to_log, reuse=False)
