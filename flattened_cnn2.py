@@ -30,7 +30,8 @@ class ZoneModel():
         if mode == tf.contrib.learn.ModeKeys.INFER:
             BATCH_SIZE=1
         else:
-            BATCH_SIZE=10
+            BATCH_SIZE=30
+        print(XSIZE, YSIZE)
         data = tf.reshape(data, [BATCH_SIZE, IMAGE_DEPTH, YSIZE, XSIZE, CHANNELS])
         conv1 = tf.layers.conv3d(inputs=data, filters=FILTER_COUNT, kernel_size=KERNEL_SIZE1, padding="same", 
                 strides=(DEPTHSTRIDE,XSTRIDE,YSTRIDE), name="conv1", trainable=not self.localize)
@@ -40,7 +41,7 @@ class ZoneModel():
         print(conv2)
         pool1 = tf.layers.max_pooling3d(inputs=conv2, pool_size=POOLSIZE1, strides=POOL_STRIDES1, name="pool1")
         print(pool1)
-        flattener = tf.reshape(pool1, [BATCH_SIZE, 164, 127, 24])
+        flattener = tf.reshape(pool1, [BATCH_SIZE, 169, 134, 24])
         pool2 = tf.layers.max_pooling2d(inputs=flattener, pool_size=(3,3), strides=(3,3), name="pool2")
         print(pool2)
         conv3 = tf.layers.conv2d(inputs=pool2, filters=FILTER_COUNT, kernel_size=(3,3), padding="same", 
@@ -51,7 +52,7 @@ class ZoneModel():
         conv4 = tf.layers.conv2d(inputs=pool3, filters=FILTER_COUNT, kernel_size=(3,3), padding="same", 
                 strides=(1, 1), name="conv4", activation=tf.nn.relu, trainable=not self.localize)
         print(conv4)
-        pool4 = tf.layers.max_pooling2d(inputs=conv4, pool_size=POOLSIZE2, strides=POOL_STRIDES, name="pool2")
+        pool4 = tf.layers.max_pooling2d(inputs=conv4, pool_size=POOLSIZE2, strides=POOL_STRIDES, name="pool2", padding="same")
         print(pool4)
         flat_pool = tf.reshape(pool2, [BATCH_SIZE, FLAT_POOL_SIZE])
         flat_pool=tf.identity(flat_pool, name="flat_pool")

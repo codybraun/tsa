@@ -131,7 +131,7 @@ def read_data(infile, vertical="both", horizontal="both"):
         else:
             for i in range(0,16):
                 rotated_data.append(data[:,:,i])
-        data = np.array(rotated_data)    
+        data = np.array(rotated_data)  
     elif extension == '.a3d':
         if(h['word_type']==7): #float32
             data = np.fromfile(fid, dtype = np.float32, count = nx * ny * nt)

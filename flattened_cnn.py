@@ -47,7 +47,7 @@ class ZoneModel():
         pool3 = tf.layers.max_pooling2d(inputs=conv3, pool_size=(2,2), strides=POOL_STRIDES, name="pool1")
         conv4 = tf.layers.conv2d(inputs=pool3, filters=FILTER_COUNT, kernel_size=(3,3), padding="same", 
                 strides=(1, 1), name="conv4", activation=tf.nn.relu, trainable=not self.localize)
-        pool4 = tf.layers.max_pooling2d(inputs=conv4, pool_size=POOLSIZE2, strides=POOL_STRIDES, name="pool2")
+        pool4 = tf.layers.max_pooling2d(inputs=conv4, pool_size=POOLSIZE2, strides=POOL_STRIDES, name="pool2", padding="same")
         
         flat_pool = tf.reshape(pool2, [BATCH_SIZE, FLAT_POOL_SIZE])
         flat_pool=tf.identity(flat_pool, name="flat_pool")
