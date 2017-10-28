@@ -150,6 +150,25 @@ def read_data(infile, vertical="both", horizontal="both"):
     else:
         return real, imag
 
+def read_data_coords(infile, x, y, x_size, y_size):
+    
+    h = read_header(infile)
+    nx = int(h['num_x_pts'])
+    ny = int(h['num_y_pts'])
+    nt = int(h['num_t_pts'])
+    fid = open(infile, 'rb')
+    fid.seek(512) #skip header
+    if(h['word_type']==7): #float32
+        data = np.fromfile(fid, dtype = np.float32, count = nx * ny * nt)
+    elif(h['word_type']==4): #uint16
+        data = np.fromfile(fid, dtype = np.uint16, count = nx * ny * nt)
+    data = data * h['data_scale_factor'] #scaling factor
+    data = data.reshape(nx, ny, nt, order='F').copy() #make N-d image
+    data = data[x:x + x_size, y:y+y_size, :]
+    fid.close()
+    #return(data)
+    return np.swapaxes(data, 2, 0)
+
 class InputImagesIterator:
     def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True):
         self.ids=ids
