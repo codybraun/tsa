@@ -1,6 +1,9 @@
 import os 
 import numpy as np
 import pickle
+import skimage.measure
+import skimage.io
+import cv2
 
 def read_header(infile):
     """Read image header (first 512 bytes)
@@ -181,18 +184,55 @@ class ResidueIterator:
     def __iter__(self):
         return self
 
-    def next(self):
+    def calculate_residue(self, data):
+        transformed = self.pca_model.transform(data)
+        reverse_transformed = self.pca_model.inverse_transform(transformed) 
+        reverse_transformed = reverse_transformed[0]
+        skimage.io.imsave("./output_images/" + self.ids[self.i] + "reverse_transformed.png", self.scale_array(reverse_transformed).reshape(-1,512))
+        data = data[0]
+        binary_transformed = reverse_transformed.copy()
+        binary_transformed[reverse_transformed > 230] = 0
+        binary_transformed[reverse_transformed < 230] = 1
+        binary_data = data.copy()
+        binary_data[data > 1] = 0
+        binary_data[data < 1] = 1
+        diff = binary_data - binary_transformed
+        diff[diff==0] = 0
+        diff[diff>0] = 255
+        return diff
+
+    def scale_array(self, array):
+        mn = np.min(array)
+        mx = np.max(array)
+        return np.uint8((array - mn)*255/(mx - mn))
+
+    def build_residue(self):
+        data = [np.stack(self.load_thresholded_image(self.data_path + self.ids[self.i] +  ".aps")).flatten()]
+        skimage.io.imsave("./output_images/" + self.ids[self.i] + "original.png", data[0].reshape(-1,512))
+        data = self.calculate_residue(data)
+        data = skimage.measure.block_reduce(data.reshape(16, 660, 512, order="A"), (1,2,2), np.max)
+        skimage.io.imsave("./output_images/" + self.ids[self.i] + "data.png", self.scale_array(data).reshape(-1,256))
+        data = data.astype("float32")
+        return data
+
+    def load_thresholded_image(self, image_path):
+        data = read_data(image_path).reshape(16 * 660, 512, order="A")
+        data *= 255/data.max() 
+        data = data.astype(np.uint8)
+        return cv2.adaptiveThreshold(data,255,cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY,11,5)
+
+    def __next__(self):
         if self.i < len(self.ids) -1:
             self.i = self.i + 1
-            print ("RETURNING RESIDUE")
-            print(np.stack(read_data(self.data_path + self.ids[self.i] + ".aps", "both", "both")).shape)
-            return np.stack(read_data(self.data_path + self.ids[self.i] + ".aps", "both", "both"))
+            data = self.build_residue()
+            return data
         else:
             if not self.repeating:
                 raise StopIteration()
             #Restart iteration, cycle back through
             self.i = -1
-            return np.stack(read_data(self.data_path + self.ids[self.i] + ".aps", "both", "both"))
+            data = self.build_residue()
+            return data
 
 class InputImagesIterator:
     def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True):
@@ -207,34 +247,21 @@ class InputImagesIterator:
     def __iter__(self):
         return self
 
-    def calculate_residue(self, data):
-        transformed = self.pca_model.transform(data)
-        reverse_transformed = self.pca_model.inverse_transform(transformed) 
-        reverse_transformed = reverse_transformed[0]
-        data = data[0]
-        binary_transformed = reverse_transformed.copy()
-        binary_transformed[reverse_transformed > 230] = 0
-        binary_transformed[reverse_transformed < 230] = 1
-        binary_data = data.copy()
-        binary_data[data > 1] = 0
-        binary_data[data < 1] = 1
-        diff = binary_data - binary_transformed
-        diff[diff==0] = 0
-        diff[diff>0] = 255
 
-    def next(self):
-        # print ("id " + str(self.ids[self.i-1])) 
-        # print("image iter " + str(self.i))
-        if self.i < len(self.ids) -1:
-            self.i = self.i + 1
-            #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
-            return self.calculate_residue(np.stack(read_data(self.data_path + self.ids[self.i] + ".aps", sel+f.vertical, self.horizontal)))
-        else:
-            if not self.repeating:
-                raise StopIteration()
-            #Restart iteration, cycle back through
-            self.i = -1
-            return self.calculate_residue(np.stack(read_data(self.data_path + self.ids[0] + ".aps", self.vertical, self.horizontal)))
+
+    # def __next__(self):
+    #     # print ("id " + str(self.ids[self.i-1])) 
+    #     # print("image iter " + str(self.i))
+    #     if self.i < len(self.ids) -1:
+    #         self.i = self.i + 1
+    #         #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
+    #         return self.calculate_residue(np.stack(read_data(self.data_path + self.ids[self.i] + ".aps", sel+f.vertical, self.horizontal)))
+    #     else:
+    #         if not self.repeating:
+    #             raise StopIteration()
+    #         #Restart iteration, cycle back through
+    #         self.i = -1
+    #         return self.calculate_residue(np.stack(read_data(self.data_path + self.ids[0] + ".aps", self.vertical, self.horizontal)))
 
 class InputLabelsIterator:
     def __init__(self, ids, labels):
@@ -245,7 +272,7 @@ class InputLabelsIterator:
     def __iter__(self):
         return self
 
-    def next(self):
+    def __next__(self):
         #print("in label iter " + str(self.ids[self.i -1])) 
         #print("in label iter " + str(self.test_labels[self.i -1])) 
         #print("label iter " + str(self.i))
