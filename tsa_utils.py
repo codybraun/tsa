@@ -1,9 +1,13 @@
-import os 
+import os
 import numpy as np
 import pickle
+import skimage
 import skimage.measure
 import skimage.io
 import cv2
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+
 
 def read_header(infile):
     """Read image header (first 512 bytes)
@@ -114,11 +118,11 @@ def read_data(infile, vertical="both", horizontal="both"):
         data = data * h['data_scale_factor'] #scaling factor
         data = data.reshape(nx, ny, nt, order='F').copy() #make N-d image
         if vertical == "bottom":
-            data = data[:, :340, :] 
+            data = data[:, :340, :]
         elif vertical == "top":
-            data = data[:, 320:660, :] 
+            data = data[:, 320:660, :]
         elif vertical == "middle":
-            data = data[:, 170:510, :] 
+            data = data[:, 170:510, :]
         rotated_data = []
         if horizontal == "right":
             for i in range(0,16):
@@ -135,7 +139,7 @@ def read_data(infile, vertical="both", horizontal="both"):
         else:
             for i in range(0,16):
                 rotated_data.append(data[:,:,i])
-        data = np.array(rotated_data)  
+        data = np.array(rotated_data)
     elif extension == '.a3d':
         if(h['word_type']==7): #float32
             data = np.fromfile(fid, dtype = np.float32, count = nx * ny * nt)
@@ -155,7 +159,7 @@ def read_data(infile, vertical="both", horizontal="both"):
         return real, imag
 
 def read_data_coords(infile, x, y, x_size, y_size):
-    
+
     h = read_header(infile)
     nx = int(h['num_x_pts'])
     ny = int(h['num_y_pts'])
@@ -173,31 +177,41 @@ def read_data_coords(infile, x, y, x_size, y_size):
     #return(data)
     return np.swapaxes(data, 2, 0)
 
+def load_thresholded_image(image_path, x=11, y=5):
+    data = read_data(image_path).reshape(16 * 660, 512, order="A")
+    data *= 255/data.max()
+    data = data.astype(np.uint8)
+    return cv2.adaptiveThreshold(data,255,cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY,x,y)
+
 class ResidueIterator:
-    def __init__(self, ids, data_path, pca_model, repeating=True):
+    def __init__(self, ids, data_path, pca_model, repeating=True, x=11, y=5, threshold=230,pool_size=16):
         self.ids=ids
         self.data_path=data_path
         self.i = -1
         self.repeating = repeating
         self.pca_model = pca_model
+        self.x=x
+        self.y=y
+        self.threshold=threshold
+        self.pool_size=pool_size
 
     def __iter__(self):
         return self
 
     def calculate_residue(self, data):
         transformed = self.pca_model.transform(data)
-        reverse_transformed = self.pca_model.inverse_transform(transformed) 
+        reverse_transformed = self.pca_model.inverse_transform(transformed)
         reverse_transformed = reverse_transformed[0]
-        skimage.io.imsave("./output_images/" + self.ids[self.i] + "reverse_transformed.png", self.scale_array(reverse_transformed).reshape(-1,512))
+        #skimage.io.imsave("./output_images/" + self.ids[self.i] + "reverse_transformed.png", self.scale_array(reverse_transformed).reshape(-1,512))
         data = data[0]
         binary_transformed = reverse_transformed.copy()
-        binary_transformed[reverse_transformed > 230] = 0
-        binary_transformed[reverse_transformed < 230] = 1
+        binary_transformed[reverse_transformed > self.threshold] = 0
+        binary_transformed[reverse_transformed < self.threshold] = 1
         binary_data = data.copy()
         binary_data[data > 1] = 0
         binary_data[data < 1] = 1
         diff = binary_data - binary_transformed
-        diff[diff==0] = 0
+        diff[diff<=0] = 0
         diff[diff>0] = 255
         return diff
 
@@ -207,19 +221,14 @@ class ResidueIterator:
         return np.uint8((array - mn)*255/(mx - mn))
 
     def build_residue(self):
-        data = [np.stack(self.load_thresholded_image(self.data_path + self.ids[self.i] +  ".aps")).flatten()]
-        skimage.io.imsave("./output_images/" + self.ids[self.i] + "original.png", data[0].reshape(-1,512))
+        data = [np.stack(load_thresholded_image(self.data_path + self.ids[self.i] +  ".aps",x=self.x,y=self.y)).flatten()]
+        #skimage.io.imsave("./output_images/" + self.ids[self.i] + "original.png", data[0].reshape(-1,512))
         data = self.calculate_residue(data)
-        data = skimage.measure.block_reduce(data.reshape(16, 660, 512, order="A"), (1,2,2), np.max)
-        skimage.io.imsave("./output_images/" + self.ids[self.i] + "data.png", self.scale_array(data).reshape(-1,256))
+        data = skimage.measure.block_reduce(data.reshape(16, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean)
+        #skimage.io.imsave("./output_images/" + self.ids[self.i] + "data.png", self.scale_array(data).reshape(-1,32))
         data = data.astype("float32")
         return data
 
-    def load_thresholded_image(self, image_path):
-        data = read_data(image_path).reshape(16 * 660, 512, order="A")
-        data *= 255/data.max() 
-        data = data.astype(np.uint8)
-        return cv2.adaptiveThreshold(data,255,cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY,11,5)
 
     def __next__(self):
         if self.i < len(self.ids) -1:
@@ -235,7 +244,7 @@ class ResidueIterator:
             return data
 
 class InputImagesIterator:
-    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True):
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1):
         self.ids=ids
         self.contrast = contrast
         self.data_path=data_path
@@ -243,25 +252,99 @@ class InputImagesIterator:
         self.vertical = vertical
         self.horizontal = horizontal
         self.repeating = repeating
+        self.pool_size = pool_size
 
     def __iter__(self):
         return self
 
+    def calculate_data(self):
+        data = read_data(self.data_path + self.ids[self.i] + ".aps", self.vertical, self.horizontal)
+        data = skimage.measure.block_reduce(data.reshape(16, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32) * self.contrast
+        return data
 
+    def __next__(self):
+         # print ("id " + str(self.ids[self.i-1]))
+         # print("image iter " + str(self.i))
+         if self.i < len(self.ids) -1:
+             self.i = self.i + 1
+             #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
+             return self.calculate_data()
+         else:
+             if not self.repeating:
+                 raise StopIteration()
+             #Restart iteration, cycle back through
+             self.i = -1
+             return self.calculate_data()
 
-    # def __next__(self):
-    #     # print ("id " + str(self.ids[self.i-1])) 
-    #     # print("image iter " + str(self.i))
-    #     if self.i < len(self.ids) -1:
-    #         self.i = self.i + 1
-    #         #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
-    #         return self.calculate_residue(np.stack(read_data(self.data_path + self.ids[self.i] + ".aps", sel+f.vertical, self.horizontal)))
-    #     else:
-    #         if not self.repeating:
-    #             raise StopIteration()
-    #         #Restart iteration, cycle back through
-    #         self.i = -1
-    #         return self.calculate_residue(np.stack(read_data(self.data_path + self.ids[0] + ".aps", self.vertical, self.horizontal)))
+class ScaledImagesIterator:
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1):
+        self.ids=ids
+        self.contrast = contrast
+        self.data_path=data_path
+        self.i = -1
+        self.vertical = vertical
+        self.horizontal = horizontal
+        self.repeating = repeating
+        self.pool_size = pool_size
+        self.scaler = StandardScaler()
+        data = []
+        for image in ids[:300]:
+            data.append(read_data(self.data_path + "/" + image + ".aps").flatten())
+        data = np.stack(data)
+        self.scaler.fit(data)
+        
+
+    def __iter__(self):
+        return self
+
+    def calculate_data(self):
+        data = read_data(self.data_path + self.ids[self.i] + ".aps", self.vertical, self.horizontal)
+        data = self.scaler.transform([data.flatten()])
+        data = skimage.measure.block_reduce(data.reshape(16, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32) * self.contrast
+        return data
+
+    def __next__(self):
+         if self.i < len(self.ids) -1:
+             self.i = self.i + 1
+             #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
+             return self.calculate_data()
+         else:
+             if not self.repeating:
+                 raise StopIteration()
+             #Restart iteration, cycle back through
+             self.i = -1
+             return self.calculate_data()
+
+class ThresholdedInputImagesIterator:
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1):
+        self.ids=ids
+        self.contrast = contrast
+        self.data_path=data_path
+        self.i = -1
+        self.vertical = vertical
+        self.horizontal = horizontal
+        self.repeating = repeating
+        self.pool_size=pool_size
+
+    def __iter__(self):
+        return self
+
+    def calculate_data(self):
+        data = load_thresholded_image(self.data_path + self.ids[self.i] + ".aps")
+        data = skimage.measure.block_reduce(data.reshape(16, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32)
+        return data
+
+    def __next__(self):
+         if self.i < len(self.ids) -1:
+             self.i = self.i + 1
+             #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
+             return(self.calculate_data())
+         else:
+             if not self.repeating:
+                 raise StopIteration()
+             #Restart iteration, cycle back through
+             self.i = -1
+             return(self.calculate_data())
 
 class InputLabelsIterator:
     def __init__(self, ids, labels):
@@ -273,8 +356,8 @@ class InputLabelsIterator:
         return self
 
     def __next__(self):
-        #print("in label iter " + str(self.ids[self.i -1])) 
-        #print("in label iter " + str(self.test_labels[self.i -1])) 
+        #print("in label iter " + str(self.ids[self.i -1]))
+        #print("in label iter " + str(self.test_labels[self.i -1]))
         #print("label iter " + str(self.i))
         if self.i < len(self.ids) -1:
             self.i = self.i + 1
