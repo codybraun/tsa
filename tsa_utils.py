@@ -100,7 +100,7 @@ def read_header(infile):
     return h
 
 
-def read_data(infile, vertical="both", horizontal="both"):
+def read_data(infile, vertical="both", horizontal="both", threshold=.00005):
     """Read any of the 4 types of image files, returns a numpy array of the image contents
     """
     extension = os.path.splitext(infile)[1]
@@ -110,6 +110,10 @@ def read_data(infile, vertical="both", horizontal="both"):
     nt = int(h['num_t_pts'])
     fid = open(infile, 'rb')
     fid.seek(512) #skip header
+    if extension == '.aps':
+        angles = 16
+    else:
+        angles=64
     if extension == '.aps' or extension == '.a3daps':
         if(h['word_type']==7): #float32
             data = np.fromfile(fid, dtype = np.float32, count = nx * ny * nt)
@@ -125,19 +129,19 @@ def read_data(infile, vertical="both", horizontal="both"):
             data = data[:, 170:510, :]
         rotated_data = []
         if horizontal == "right":
-            for i in range(0,16):
+            for i in range(0,angles):
                 increment = 10
                 rotated_data.append(data[(i * increment) + 50:(i * increment) + 320,:,i])
         elif horizontal == "left":
-            for i in range(0,16):
+            for i in range(0,angles):
                 increment = 10
                 rotated_data.append(data[210 - (i * increment): 480-(i * increment):,:,i])
         elif horizontal == "middle":
-            for i in range(0,16):
+            for i in range(0,angles):
                 increment = 10
                 rotated_data.append(data[130:400,:,i])
         else:
-            for i in range(0,16):
+            for i in range(0,angles):
                 rotated_data.append(data[:,:,i])
         data = np.array(rotated_data)
     elif extension == '.a3d':
@@ -153,10 +157,40 @@ def read_data(infile, vertical="both", horizontal="both"):
         real = data[0,:,:,:].copy()
         imag = data[1,:,:,:].copy()
     fid.close()
+    
     if extension != '.ahi':
+        data[data<threshold] = 0
         return np.swapaxes(data, 2, 1)
     else:
         return real, imag
+    
+def spread_spectrum(img):
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    img= clahe.apply(img)
+    return img
+
+def convert_to_grayscale(img):
+    base_range = np.amax(img) - np.amin(img)
+    rescaled_range = 255 - 0
+    img_rescaled = (((img - np.amin(img)) * rescaled_range) / base_range)
+    img_rescaled[img_rescaled < 12]=0
+    return np.uint8(img_rescaled)
+
+def normalize(image):
+    MIN_BOUND = 0.0
+    MAX_BOUND = 255.0
+    
+    image = (image - MIN_BOUND) / (MAX_BOUND - MIN_BOUND)
+    image[image>1] = 1.
+    image[image<0] = 0.
+    return image
+
+def zero_center(image):
+     
+    image_mean = image.mean()
+    
+    image = image - image_mean
+    return image
 
 def read_data_coords(infile, x, y, x_size, y_size):
 
@@ -224,7 +258,7 @@ class ResidueIterator:
         data = [np.stack(load_thresholded_image(self.data_path + self.ids[self.i] +  ".aps",x=self.x,y=self.y)).flatten()]
         #skimage.io.imsave("./output_images/" + self.ids[self.i] + "original.png", data[0].reshape(-1,512))
         data = self.calculate_residue(data)
-        data = skimage.measure.block_reduce(data.reshape(16, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean)
+        data = skimage.measure.block_reduce(data.reshape(-1, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean)
         #skimage.io.imsave("./output_images/" + self.ids[self.i] + "data.png", self.scale_array(data).reshape(-1,32))
         data = data.astype("float32")
         return data
@@ -244,7 +278,7 @@ class ResidueIterator:
             return data
 
 class InputImagesIterator:
-    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1):
+    def __init__(self, ids, data_path, contrast=10000, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=None, file_format=".aps"):
         self.ids=ids
         self.contrast = contrast
         self.data_path=data_path
@@ -253,13 +287,14 @@ class InputImagesIterator:
         self.horizontal = horizontal
         self.repeating = repeating
         self.pool_size = pool_size
+        self.file_format = file_format
 
     def __iter__(self):
         return self
 
     def calculate_data(self):
-        data = read_data(self.data_path + self.ids[self.i] + ".aps", self.vertical, self.horizontal)
-        data = skimage.measure.block_reduce(data.reshape(16, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32) * self.contrast
+        data = read_data(str(self.data_path + str(self.ids[self.i]) + str(self.file_format)), self.vertical, self.horizontal)
+        data = skimage.measure.block_reduce(data.reshape(-1, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32) * self.contrast
         return data
 
     def __next__(self):
@@ -275,9 +310,10 @@ class InputImagesIterator:
              #Restart iteration, cycle back through
              self.i = -1
              return self.calculate_data()
+        
 
-class ScaledImagesIterator:
-    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1):
+class GrayscaleImagesIterator:
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=None, file_format=".aps"):
         self.ids=ids
         self.contrast = contrast
         self.data_path=data_path
@@ -286,21 +322,65 @@ class ScaledImagesIterator:
         self.horizontal = horizontal
         self.repeating = repeating
         self.pool_size = pool_size
-        self.scaler = StandardScaler()
-        data = []
-        for image in ids[:300]:
-            data.append(read_data(self.data_path + "/" + image + ".aps").flatten())
-        data = np.stack(data)
-        self.scaler.fit(data)
-        
+        self.file_format=file_format
 
     def __iter__(self):
         return self
 
     def calculate_data(self):
-        data = read_data(self.data_path + self.ids[self.i] + ".aps", self.vertical, self.horizontal)
+        data = read_data(self.data_path + self.ids[self.i] + self.file_format, self.vertical, self.horizontal).reshape(-1, 512, order="A")
+        data = convert_to_grayscale(data)
+        data = spread_spectrum(data)
+        data = skimage.measure.block_reduce(data.reshape(-1, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32) * self.contrast
+        data = normalize(data)
+        data = zero_center(data)
+        return data
+
+    def __next__(self):
+         if self.i < len(self.ids) -1:
+             self.i = self.i + 1
+             #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
+             return self.calculate_data()
+         else:
+             if not self.repeating:
+                 raise StopIteration()
+             #Restart iteration, cycle back through
+             self.i = -1
+             return self.calculate_data()
+
+class ScaledImagesIterator:
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=[], invert=1, file_format=".aps"):
+        self.ids=ids
+        self.contrast = contrast
+        self.data_path=data_path
+        self.i = -1
+        self.vertical = vertical
+        self.horizontal = horizontal
+        self.repeating = repeating
+        self.pool_size = pool_size
+        self.invert = invert
+        self.file_format=file_format
+        if len(scaler_ids) != 0:
+            self.scaler = self.fit_scaler(scaler_ids)
+        else:
+            self.scaler = self.fit_scaler(ids)
+        
+    def fit_scaler(self,ids):
+        scaler = StandardScaler()
+        data = []
+        for image in ids[:50]:
+            data.append(read_data(str(self.data_path) + "/" + str(image) + self.file_format).flatten())
+        data = np.stack(data)
+        scaler.fit(data)
+        return scaler
+
+    def __iter__(self):
+        return self
+
+    def calculate_data(self):
+        data = read_data(self.data_path + self.ids[self.i] + self.file_format, self.vertical, self.horizontal)
         data = self.scaler.transform([data.flatten()])
-        data = skimage.measure.block_reduce(data.reshape(16, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32) * self.contrast
+        data = skimage.measure.block_reduce(data.reshape(-1, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32) * self.contrast * self.invert
         return data
 
     def __next__(self):
@@ -316,7 +396,7 @@ class ScaledImagesIterator:
              return self.calculate_data()
 
 class ThresholdedInputImagesIterator:
-    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1):
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=None):
         self.ids=ids
         self.contrast = contrast
         self.data_path=data_path
@@ -331,7 +411,7 @@ class ThresholdedInputImagesIterator:
 
     def calculate_data(self):
         data = load_thresholded_image(self.data_path + self.ids[self.i] + ".aps")
-        data = skimage.measure.block_reduce(data.reshape(16, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32)
+        data = skimage.measure.block_reduce(data.reshape(-1, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32)
         return data
 
     def __next__(self):
@@ -346,6 +426,54 @@ class ThresholdedInputImagesIterator:
              self.i = -1
              return(self.calculate_data())
 
+
+class ThresholdedScaledImagesIterator:
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=[],x=11,y=5):
+        self.ids=ids
+        self.contrast = contrast
+        self.data_path=data_path
+        self.i = -1
+        self.vertical = vertical
+        self.horizontal = horizontal
+        self.repeating = repeating
+        self.pool_size=pool_size
+        self.x = x
+        self.y = y
+        if len(scaler_ids) != 0:
+            self.scaler = self.fit_scaler(scaler_ids)
+        else:
+            self.scaler = self.fit_scaler(ids)
+
+    def __iter__(self):
+        return self
+    
+    def fit_scaler(self,ids):
+        scaler = StandardScaler()
+        data = []
+        for image in ids[:300]:
+            data.append(load_thresholded_image(str(self.data_path) + "/" + str(image) + ".aps", x=self.x, y=self.y).flatten())
+        data = np.stack(data)
+        scaler.fit(data)
+        return scaler
+
+    def calculate_data(self):
+        data = load_thresholded_image(self.data_path + self.ids[self.i] + ".aps", x=self.x, y=self.y)
+        data = self.scaler.transform([data.flatten()])
+        data = skimage.measure.block_reduce(data.reshape(-1, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32)
+        return data
+
+    def __next__(self):
+         if self.i < len(self.ids) -1:
+             self.i = self.i + 1
+             #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
+             return(self.calculate_data())
+         else:
+             if not self.repeating:
+                 raise StopIteration()
+             #Restart iteration, cycle back through
+             self.i = -1
+             return(self.calculate_data())
+        
 class InputLabelsIterator:
     def __init__(self, ids, labels):
         self.ids=ids
