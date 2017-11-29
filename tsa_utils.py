@@ -99,10 +99,20 @@ def read_header(infile):
     h['spare_end'] = np.fromfile(fid, dtype = np.float32, count = 10)
     return h
 
+def flip_image(data):
+    flipped = np.flip(data, axis=2)
+    flipped = np.flip(flipped, axis=0)
+    return flipped
 
 def read_data(infile, vertical="both", horizontal="both", threshold=.00005):
     """Read any of the 4 types of image files, returns a numpy array of the image contents
     """
+    
+    if "reverse" in infile:
+        reverse= True
+        infile = infile.replace("reverse","")
+    else:
+        reverse=False
     extension = os.path.splitext(infile)[1]
     h = read_header(infile)
     nx = int(h['num_x_pts'])
@@ -160,7 +170,10 @@ def read_data(infile, vertical="both", horizontal="both", threshold=.00005):
     
     if extension != '.ahi':
         data[data<threshold] = 0
-        return np.swapaxes(data, 2, 1)
+        data = np.swapaxes(data, 2, 1)
+        if reverse:
+            data = flip_image(data)
+        return data
     else:
         return real, imag
     
