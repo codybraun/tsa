@@ -7,7 +7,10 @@ import skimage.io
 import cv2
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
-
+from sklearn.preprocessing import minmax_scale as sknorm
+from sklearn.preprocessing import scale
+import random
+from pathlib import Path
 
 def read_header(infile):
     """Read image header (first 512 bytes)
@@ -104,16 +107,18 @@ def flip_image(data):
     flipped = np.flip(flipped, axis=0)
     return flipped
 
-def read_data(infile, vertical="both", horizontal="both", threshold=.00005):
-    """Read any of the 4 types of image files, returns a numpy array of the image contents
-    """
-    
+def read_data(infile, vertical="both", horizontal="both", threshold=.00005, normalize=True, use_cache=True, cache_path="/tmp/", pool_size=1):
     if "reverse" in infile:
         reverse= True
-        infile = infile.replace("reverse","")
     else:
         reverse=False
-    extension = os.path.splitext(infile)[1]
+    base_file, extension = os.path.splitext(os.path.basename(infile))
+    if use_cache:
+        cached_file = Path(cache_path + base_file + ".p")
+        if cached_file.is_file():
+            data = pickle.load(open(cache_path + base_file + ".p", "rb"))
+            return data
+    infile = infile.replace("reverse","")
     h = read_header(infile)
     nx = int(h['num_x_pts'])
     ny = int(h['num_y_pts'])
@@ -131,51 +136,25 @@ def read_data(infile, vertical="both", horizontal="both", threshold=.00005):
             data = np.fromfile(fid, dtype = np.uint16, count = nx * ny * nt)
         data = data * h['data_scale_factor'] #scaling factor
         data = data.reshape(nx, ny, nt, order='F').copy() #make N-d image
-        if vertical == "bottom":
-            data = data[:, :340, :]
-        elif vertical == "top":
-            data = data[:, 320:660, :]
-        elif vertical == "middle":
-            data = data[:, 170:510, :]
-        rotated_data = []
-        if horizontal == "right":
-            for i in range(0,angles):
-                increment = 10
-                rotated_data.append(data[(i * increment) + 50:(i * increment) + 320,:,i])
-        elif horizontal == "left":
-            for i in range(0,angles):
-                increment = 10
-                rotated_data.append(data[210 - (i * increment): 480-(i * increment):,:,i])
-        elif horizontal == "middle":
-            for i in range(0,angles):
-                increment = 10
-                rotated_data.append(data[130:400,:,i])
-        else:
-            for i in range(0,angles):
-                rotated_data.append(data[:,:,i])
-        data = np.array(rotated_data)
-    elif extension == '.a3d':
-        if(h['word_type']==7): #float32
-            data = np.fromfile(fid, dtype = np.float32, count = nx * ny * nt)
-        elif(h['word_type']==4): #uint16
-            data = np.fromfile(fid, dtype = np.uint16, count = nx * ny * nt)
-        data = data * h['data_scale_factor'] #scaling factor
-        data = data.reshape(nx, nt, ny, order='F').copy() #make N-d image
-    elif extension == '.ahi':
-        data = np.fromfile(fid, dtype = np.float32, count = 2* nx * ny * nt)
-        data = data.reshape(2, ny, nx, nt, order='F').copy()
-        real = data[0,:,:,:].copy()
-        imag = data[1,:,:,:].copy()
     fid.close()
-    
-    if extension != '.ahi':
-        data[data<threshold] = 0
-        data = np.swapaxes(data, 2, 1)
-        if reverse:
-            data = flip_image(data)
-        return data
-    else:
-        return real, imag
+    if normalize:
+        data = (data- data.mean()) / x.std()
+    data[data<threshold] = 0
+    data = np.swapaxes(data, 2, 0)
+    data = skimage.measure.block_reduce(data.reshape(-1, 660, 512, order="A"), (1,pool_size,pool_size), np.mean).astype(np.float32)
+    #data = np.swapaxes(data, 0, 1)
+    if reverse:
+        data = flip_image(data)
+    if use_cache:
+        pickle.dump(data, open(cache_path + base_file + ".p", "wb+"))
+    return data
+   
+def sample_data(data):
+    rands = np.random.randint(3, size=16)
+    aug = np.arange(start=0, stop=64, step=4)
+    indices = rands + aug
+    data =data[indices,:,:]
+    return data
     
 def spread_spectrum(img):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
@@ -206,7 +185,6 @@ def zero_center(image):
     return image
 
 def read_data_coords(infile, x, y, x_size, y_size):
-
     h = read_header(infile)
     nx = int(h['num_x_pts'])
     ny = int(h['num_y_pts'])
@@ -291,7 +269,7 @@ class ResidueIterator:
             return data
 
 class InputImagesIterator:
-    def __init__(self, ids, data_path, contrast=10000, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=None, file_format=".aps"):
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=None, file_format=".aps", seed=111, randomize=False, normalize=True):
         self.ids=ids
         self.contrast = contrast
         self.data_path=data_path
@@ -301,14 +279,70 @@ class InputImagesIterator:
         self.repeating = repeating
         self.pool_size = pool_size
         self.file_format = file_format
+        self.seed=seed
+        self.randomize=randomize
+        self.local_random = random.Random()
+        self.local_random.seed(seed)
+        self.normalize=normalize
 
     def __iter__(self):
         return self
 
     def calculate_data(self):
-        data = read_data(str(self.data_path + str(self.ids[self.i]) + str(self.file_format)), self.vertical, self.horizontal)
+        if self.randomize:
+            j = self.local_random.randint(-1,len(self.ids)-1)
+        else:
+            j = self.i
+        print(j)
+        print("IMAGE ID " + str(self.ids[j]))
+        data = read_data(str(self.data_path + str(self.ids[j]) + str(self.file_format)), self.vertical, self.horizontal, normalize=self.normalize)
         data = skimage.measure.block_reduce(data.reshape(-1, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32) * self.contrast
+        print("IMG ITER " + str(j))
+        
         return data
+
+    def __next__(self):
+         # print ("id " + str(self.ids[self.i-1]))
+         # print("image iter " + str(self.i))
+         if self.i < len(self.ids) -1:
+             self.i = self.i + 1
+             #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
+             return self.calculate_data()
+         else:
+             if not self.repeating:
+                 raise StopIteration()
+             #Restart iteration, cycle back through
+             self.i = 0
+             return self.calculate_data()
+
+class SampledImagesIterator:
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=None, file_format=".aps", seed=111, randomize=False):
+        self.ids=ids
+        self.contrast = contrast
+        self.data_path=data_path
+        self.i = -1
+        self.vertical = vertical
+        self.horizontal = horizontal
+        self.repeating = repeating
+        self.pool_size = pool_size
+        self.file_format = file_format
+        self.seed=seed
+        self.randomize=randomize
+        self.local_random = random.Random()
+        self.local_random.seed(seed)
+
+    def __iter__(self):
+        return self
+    
+    def calculate_data(self):
+        if self.randomize:
+            j = self.local_random.randint(-1,len(self.ids)-1)
+        else:
+            j = self.i
+        print("IMAGE ID " + str(self.ids[j]))
+        print("IMAGE ITERATOR " + str(j))
+        data = read_data(str(self.data_path + str(self.ids[j]) + str(self.file_format)), self.vertical, self.horizontal, pool_size=self.pool_size)
+        return sample_data(data)
 
     def __next__(self):
          # print ("id " + str(self.ids[self.i-1]))
@@ -362,7 +396,7 @@ class GrayscaleImagesIterator:
              return self.calculate_data()
 
 class ScaledImagesIterator:
-    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=[], invert=1, file_format=".aps"):
+    def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=[], invert=1, file_format=".aps", seed=111, randomize=False, normalize=True):
         self.ids=ids
         self.contrast = contrast
         self.data_path=data_path
@@ -377,9 +411,13 @@ class ScaledImagesIterator:
             self.scaler = self.fit_scaler(scaler_ids)
         else:
             self.scaler = self.fit_scaler(ids)
+        self.randomize=randomize
+        self.local_random = random.Random()
+        self.local_random.seed(seed)
+        self.normalize=normalize
         
     def fit_scaler(self,ids):
-        scaler = StandardScaler()
+        scaler = StandardScaler(with_mean=True)
         data = []
         for image in ids[:50]:
             data.append(read_data(str(self.data_path) + "/" + str(image) + self.file_format).flatten())
@@ -387,16 +425,19 @@ class ScaledImagesIterator:
         scaler.fit(data)
         return scaler
 
-    def __iter__(self):
-        return self
-
     def calculate_data(self):
-        data = read_data(self.data_path + self.ids[self.i] + self.file_format, self.vertical, self.horizontal)
+        if self.randomize:
+            j = self.local_random.randint(-1,len(self.ids)-1)
+        else:
+            j = self.i
+        data = read_data(str(self.data_path + str(self.ids[j]) + str(self.file_format)), self.vertical, self.horizontal, normalize=self.normalize)
         data = self.scaler.transform([data.flatten()])
-        data = skimage.measure.block_reduce(data.reshape(-1, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32) * self.contrast * self.invert
+        data = skimage.measure.block_reduce(data.reshape(-1, 660, 512, order="A"), (1,self.pool_size,self.pool_size), np.mean).astype(np.float32) * self.contrast
         return data
 
     def __next__(self):
+         # print ("id " + str(self.ids[self.i-1]))
+         # print("image iter " + str(self.i))
          if self.i < len(self.ids) -1:
              self.i = self.i + 1
              #print("IMAGES ITERATOR " + str(self.ids[self.i - 1]))
@@ -405,8 +446,11 @@ class ScaledImagesIterator:
              if not self.repeating:
                  raise StopIteration()
              #Restart iteration, cycle back through
-             self.i = -1
+             self.i = 0
              return self.calculate_data()
+
+    def __iter__(self):
+        return self
 
 class ThresholdedInputImagesIterator:
     def __init__(self, ids, data_path, contrast=1, vertical="both", horizontal="both", repeating=True, pool_size=1, scaler_ids=None):
@@ -488,10 +532,14 @@ class ThresholdedScaledImagesIterator:
              return(self.calculate_data())
         
 class InputLabelsIterator:
-    def __init__(self, ids, labels):
+    def __init__(self, ids, labels, randomize=False, seed=111):
         self.ids=ids
         self.labels=labels
         self.i=-1
+        self.randomize = randomize
+        self.seed=seed
+        self.local_random = random.Random()
+        self.local_random.seed(seed)
 
     def __iter__(self):
         return self
@@ -500,12 +548,26 @@ class InputLabelsIterator:
         #print("in label iter " + str(self.ids[self.i -1]))
         #print("in label iter " + str(self.test_labels[self.i -1]))
         #print("label iter " + str(self.i))
+        
         if self.i < len(self.ids) -1:
             self.i = self.i + 1
+            if self.randomize:
+                j = self.local_random.randint(-1,len(self.ids)-1)
+            else:
+                j = self.i
+            #print("LABEL " + str(j))
             #print("LABEL" + str(self.test_labels[self.i -1]))
-            return(self.labels[self.i])
+            print("LABEL ITER " + str(j))
+            print("LABEL ID " + str(self.labels[j]))
+            return(self.labels[j])
         else:
             #Restart iteration, cycle back through
             self.i = -1
+            if self.randomize:
+                j = self.local_random.randint(-1,len(self.ids)-1)
+            else:
+                j = self.i
             #raise StopIteration()
-            return(self.labels[0])
+            print("LABEL ITER " + str(j))
+            print("LABEL ID " + str(self.labels[j]))
+            return(self.labels[j])
